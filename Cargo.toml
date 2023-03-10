@@ -2,9 +2,12 @@
 name = "car-utils"
 version = "0.1.0"
 edition = "2021"
-
+authors = ["Join.Gong<joinhack@gmail.com>", "Derek Anderson<derek@txlabs.org>"]
+description = "This crate is the ipfs car file reader writer and utils."
+license = "MIT/Apache-2.0"
+repository = "https://github.com/blocklessnetwork/car-utils"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 clap = "4.1.8"
-rust-car = {path = "../rust-car"}
+rust-car = {git = "https://github.com/blocklessnetwork/rust-car.git", branch="develop"}

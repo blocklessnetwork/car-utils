@@ -36,9 +36,9 @@ impl From<CarError> for UtilError {
     }
 }
 
-impl Into<ExitCode> for UtilError {
-    fn into(self) -> ExitCode {
-        ExitCode::from(self.code)
+impl From<UtilError> for ExitCode {
+    fn from(value: UtilError) -> Self {
+        ExitCode::from(value.code)
     }
 }
 

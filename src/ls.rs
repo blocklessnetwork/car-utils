@@ -14,6 +14,6 @@ pub(crate) fn list_car_file(path: impl AsRef<Path>) -> Result<(), UtilError> {
     }
     let file = File::open(path)?;
     let mut reader = car_reader::new_v1(file)?;
-    utils::list(&mut reader);
+    utils::list(&mut reader)?;
     Ok(())
 }

@@ -38,7 +38,7 @@ jobs:
           echo "apt-get install --assume-yes build-essential" >> Dockerfile
       - uses: actions-rs/toolchain@v1
         with:
-          toolchain: stable
+          toolchain: 1.64.0
       - name: Build runtime
         uses: actions-rs/cargo@v1
         with:

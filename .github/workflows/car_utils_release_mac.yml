@@ -67,11 +67,11 @@ jobs:
         id: get_release
         uses: bruceadams/get-release@v1.3.2
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ secrets.GHCR_TOKEN }}
       - name: upload artifact
         uses: actions/upload-release-asset@v1
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ secrets.GHCR_TOKEN }}
         with:
           upload_url: ${{ steps.get_release.outputs.upload_url }}
           asset_path: car-utils.${{ matrix.os }}.${{ matrix.arch }}.tar.gz

@@ -12,7 +12,7 @@ cargo install car-utils
 ```
 car-utils install in the cargo bin directory.
 
-### How to use.
+## How to use.
 execute the command `car-utils -help` to show the command help.
 ```
 Usage: car-utils [COMMAND]
@@ -27,7 +27,7 @@ Options:
   -h, --help  Print help
 ```
 
-####  ar subcommand
+###  ar subcommand
 archive the local directory to the car file.
 ```
 archive local file system to a car file.
@@ -40,7 +40,7 @@ Options:
   -h, --help       Print help
 ```
 
-####  ls subcommand
+###  ls subcommand
 list file structures in the car file.
 ```
 list the car files
@@ -51,7 +51,19 @@ Options:
   -c <car>      the car file for list
   -h, --help    Print help
 ```
-#### ex subcommand
+
+####  cid subcommand
+list file cids in the car file.
+```
+list the car cid
+
+Usage: car-utils cid -c <car>
+
+Options:
+  -c <car>      the car file for list.
+  -h, --help    Print help
+```
+### ex subcommand
 extract the files in the car file to the target directory.
 ```
 Usage: car-utils ex [OPTIONS] -c <car>

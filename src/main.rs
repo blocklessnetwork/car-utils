@@ -3,8 +3,8 @@ use std::process::ExitCode;
 use clap::{Arg, ArgMatches, Command};
 
 mod archive;
-mod extract;
 mod error;
+mod extract;
 mod ls;
 use archive::archive_local_fs;
 use extract::extract_car;
@@ -36,6 +36,15 @@ fn clap_matches() -> ArgMatches {
                 )
         )
         .subcommand(
+            Command::new("cid")
+                .about("list the car cid")
+                .arg(Arg::new("car")
+                    .short('c')
+                    .required(true)
+                    .help("the car file for list.")
+                )
+        )
+        .subcommand(
             Command::new("ex")
                 .about("extract the car files")
                 .arg(Arg::new("car")
@@ -52,7 +61,7 @@ fn clap_matches() -> ArgMatches {
         .get_matches()
 }
 
-fn main() -> ExitCode  {
+fn main() -> ExitCode {
     let command = clap_matches();
     let result = match command.subcommand() {
         Some(("ar", subcommad)) => {
@@ -62,7 +71,11 @@ fn main() -> ExitCode  {
         }
         Some(("ls", subcommad)) => {
             let car = subcommad.get_one::<String>("car").unwrap();
-            ls::list_car_file(car)
+            ls::list_car_file(car, false)
+        }
+        Some(("cid", subcommad)) => {
+            let car = subcommad.get_one::<String>("car").unwrap();
+            ls::list_car_file(car, true)
         }
         Some(("ex", subcommad)) => {
             let car = subcommad.get_one::<String>("car").unwrap();
@@ -76,6 +89,6 @@ fn main() -> ExitCode  {
         Err(e) => {
             eprintln!("{}", e.err);
             e.into()
-        },
+        }
     }
 }

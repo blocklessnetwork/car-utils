@@ -2,7 +2,6 @@ use std::{fmt::Display, process::ExitCode};
 
 use rust_car::error::CarError;
 
-
 pub(crate) struct UtilError {
     pub(crate) err: String,
     pub(crate) code: u8,
@@ -10,10 +9,7 @@ pub(crate) struct UtilError {
 
 impl UtilError {
     pub fn new(err: String) -> Self {
-        Self {
-            err,
-            code: 127
-        }
+        Self { err, code: 127 }
     }
 }
 
@@ -29,7 +25,6 @@ impl From<std::io::Error> for UtilError {
     }
 }
 
-
 impl From<CarError> for UtilError {
     fn from(value: CarError) -> Self {
         Self::new(value.to_string())
@@ -41,4 +36,3 @@ impl From<UtilError> for ExitCode {
         ExitCode::from(value.code)
     }
 }
-

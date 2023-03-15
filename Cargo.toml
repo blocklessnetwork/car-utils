@@ -10,4 +10,4 @@ repository = "https://github.com/blocklessnetwork/car-utils"
 
 [dependencies]
 clap = "4.1.8"
-rust-car = {path = "../rust-car"}
+rust-car = "0.1.4"

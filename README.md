@@ -45,11 +45,13 @@ list file structures in the car file.
 ```
 list the car files
 
-Usage: car-utils ls -c <car>
+Usage: car-utils ls <car>
+
+Arguments:
+  <car>  the car file for list.
 
 Options:
-  -c <car>      the car file for list
-  -h, --help    Print help
+  -h, --help  Print help
 ```
 
 ####  cid subcommand
@@ -57,11 +59,13 @@ list file cids in the car file.
 ```
 list the car cid
 
-Usage: car-utils cid -c <car>
+Usage: car-utils cid <car>
+
+Arguments:
+  <car>  the car file for list.
 
 Options:
-  -c <car>      the car file for list.
-  -h, --help    Print help
+  -h, --help  Print help
 ```
 ### ex subcommand
 extract the files in the car file to the target directory.
@@ -77,10 +81,12 @@ Options:
 ####  cat subcommand
 cat cid content from a car file.
 ```
-Usage: car-utils cat -c <car> -i <cid>
+Usage: car-utils cat -c <cid> <car>
+
+Arguments:
+  <car>  the car file for cat.
 
 Options:
-  -c <car>      the car file for cat.
-  -i <cid>      the cid of content for cat.
+  -c <cid>      the cid of content for cat.
   -h, --help    Print help
 ```

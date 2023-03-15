@@ -73,3 +73,14 @@ Options:
   -t <target>      the target directory to extract
   -h, --help       Print help
 ```
+
+####  cat subcommand
+cat cid content from a car file.
+```
+Usage: car-utils cat -c <car> -i <cid>
+
+Options:
+  -c <car>      the car file for cat.
+  -i <cid>      the cid of content for cat.
+  -h, --help    Print help
+```

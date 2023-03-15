@@ -6,6 +6,7 @@ mod archive;
 mod error;
 mod extract;
 mod ls;
+mod cat;
 use archive::archive_local_fs;
 use extract::extract_car;
 
@@ -24,6 +25,20 @@ fn clap_matches() -> ArgMatches {
                     .short('s')
                     .required(true)
                     .help("the source directory to archived")
+                )
+        )
+        .subcommand(
+            Command::new("cat")
+                .about("cat cid content from a car file")
+                .arg(Arg::new("car")
+                    .short('c')
+                    .required(true)
+                    .help("the car file for cat.")
+                )
+                .arg(Arg::new("cid")
+                    .short('i')
+                    .required(true)
+                    .help("the cid of content for cat.")
                 )
         )
         .subcommand(
@@ -76,6 +91,11 @@ fn main() -> ExitCode {
         Some(("cid", subcommad)) => {
             let car = subcommad.get_one::<String>("car").unwrap();
             ls::list_car_file(car, true)
+        }
+        Some(("cat", subcommad)) => {
+            let car = subcommad.get_one::<String>("car").unwrap();
+            let cid = subcommad.get_one::<String>("cid").unwrap();
+            cat::cat_content(&car, &cid)
         }
         Some(("ex", subcommad)) => {
             let car = subcommad.get_one::<String>("car").unwrap();

@@ -95,7 +95,7 @@ fn main() -> ExitCode {
         Some(("cat", subcommad)) => {
             let car = subcommad.get_one::<String>("car").unwrap();
             let cid = subcommad.get_one::<String>("cid").unwrap();
-            cat::cat_content(&car, &cid)
+            cat::cat_content(car, cid)
         }
         Some(("ex", subcommad)) => {
             let car = subcommad.get_one::<String>("car").unwrap();

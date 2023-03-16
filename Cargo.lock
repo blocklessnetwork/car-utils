@@ -90,7 +90,7 @@ checksum = "89b2fd2a0dcf38d7971e2194b6b6eebab45ae01067456a7fd93d5547a61b70be"
 
 [[package]]
 name = "car-utils"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "rust-car",
@@ -587,9 +587,9 @@ dependencies = [
 
 [[package]]
 name = "rust-car"
-version = "0.1.3"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d05c05c9539909404c34b1d5ed41f643d564712a157c3a40f935f5113abf9c61"
+checksum = "a4bbfa407275d79cbb84c1fdc268f652564938c5451746665eed2056b4224a4d"
 dependencies = [
  "cid",
  "integer-encoding",

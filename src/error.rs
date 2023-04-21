@@ -1,6 +1,6 @@
 use std::{fmt::Display, process::ExitCode};
 
-use rust_car::error::CarError;
+use blockless_car::error::CarError;
 
 pub(crate) struct UtilError {
     pub(crate) err: String,

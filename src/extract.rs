@@ -1,8 +1,8 @@
 use std::{fs::File, path::Path};
 
 use crate::error::UtilError;
-use rust_car::reader::{self as car_reader, CarReader};
-use rust_car::utils::extract_ipld;
+use blockless_car::reader::{self as car_reader, CarReader};
+use blockless_car::utils::extract_ipld;
 
 /// extract car file to local file system.
 /// `car` the car file for extract.

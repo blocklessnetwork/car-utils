@@ -77,6 +77,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "blockless-car"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9943c33490bdef13b39c3d505c42defe51e45c312d2da4885b5c01655512242e"
+dependencies = [
+ "cid",
+ "integer-encoding",
+ "libipld",
+ "libipld-cbor",
+ "path-absolutize",
+ "quick-protobuf",
+ "thiserror",
+]
+
+[[package]]
 name = "byteorder"
 version = "1.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -90,10 +105,10 @@ checksum = "89b2fd2a0dcf38d7971e2194b6b6eebab45ae01067456a7fd93d5547a61b70be"
 
 [[package]]
 name = "car-utils"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
+ "blockless-car",
  "clap",
- "rust-car",
 ]
 
 [[package]]
@@ -583,21 +598,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8856d8364d252a14d474036ea1358d63c9e6965c8e5c1885c18f73d70bff9c7b"
 dependencies = [
  "proc-macro2",
-]
-
-[[package]]
-name = "rust-car"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4bbfa407275d79cbb84c1fdc268f652564938c5451746665eed2056b4224a4d"
-dependencies = [
- "cid",
- "integer-encoding",
- "libipld",
- "libipld-cbor",
- "path-absolutize",
- "quick-protobuf",
- "thiserror",
 ]
 
 [[package]]

@@ -10,4 +10,4 @@ repository = "https://github.com/blocklessnetwork/car-utils"
 
 [dependencies]
 clap = "4.1.8"
-blockless-car = "0.1.4"
+blockless-car = "0.1.5"

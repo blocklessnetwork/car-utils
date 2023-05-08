@@ -12,7 +12,13 @@ use extract::extract_car;
 
 fn clap_matches() -> ArgMatches {
     Command::default()
+        .version("v0.1.3")
         .arg_required_else_help(true)
+        .arg(
+            Arg::new("version")
+                .long("version")
+                .help("show version.")
+        )
         .subcommand(
             Command::new("ar")
                 .about("archive local file system to a car file")

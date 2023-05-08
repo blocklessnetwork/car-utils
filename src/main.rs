@@ -79,7 +79,7 @@ fn main() -> ExitCode {
         Some(("ar", subcommad)) => {
             let car = subcommad.get_one::<String>("car").unwrap();
             let source = subcommad.get_one::<String>("source").unwrap();
-            archive_local_fs(source, car)
+            archive_local_fs(car, source)
         }
         Some(("ls", subcommad)) => {
             let car = subcommad.get_one::<String>("car").unwrap();

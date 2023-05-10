@@ -12,7 +12,7 @@ use extract::extract_car;
 
 fn clap_matches() -> ArgMatches {
     Command::default()
-        .version("v0.1.3")
+        .version("v0.1.5")
         .arg_required_else_help(true)
         .arg(
             Arg::new("version")

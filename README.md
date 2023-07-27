@@ -7,86 +7,108 @@ if you wanna lean about WASM runtime, please vist "https://github.com/blocklessn
 ## How to intsall.
 
 use cargo install to install the command
+
 ```
 cargo install car-utils
 ```
+
 car-utils install in the cargo bin directory.
 
 ## How to use.
-execute the command `car-utils -help` to show the command help.
+
+execute the command `car-utils --help` to show the command help.
+
 ```
-Usage: car-utils [COMMAND]
+Usage: car-utils <COMMAND>
 
 Commands:
-  ar    archive local file system to a car file.
-  ls    list the car files
-  ex    extract the car files
+  ar    Archive local file system to a car file
+  cat   View cid content from a car file
+  ls    List the car files
+  cid   List the car cid
+  ex    Extract the car files
   help  Print this message or the help of the given subcommand(s)
 
 Options:
-  -h, --help  Print help
+  -h, --help     Print help
+  -V, --version  Print version
 ```
 
 ###  ar subcommand
-archive the local directory to the car file.
-```
-archive local file system to a car file.
 
-Usage: car-utils ar -c <car> -s <source>
+archive the local directory to the car file.
+
+```
+Archive local file system to a car file
+
+Usage: car-utils ar -c <CAR> -s <SOURCE>
 
 Options:
-  -c <car>         the car file for archive
-  -s <source>      the source directory to archived
+  -c <CAR>         the car file for archive.
+  -s <SOURCE>      the source directory to be archived.
   -h, --help       Print help
 ```
 
 ###  ls subcommand
-list file structures in the car file.
-```
-list the car files
 
-Usage: car-utils ls <car>
+list file structures in the car file.
+
+```
+List the car files
+
+Usage: car-utils ls <CAR>
 
 Arguments:
-  <car>  the car file for list.
+  <CAR>  the car file for list.
 
 Options:
   -h, --help  Print help
 ```
 
 ####  cid subcommand
-list file cids in the car file.
-```
-list the car cid
 
-Usage: car-utils cid <car>
+list file cids in the car file.
+
+```
+List the car cid
+
+Usage: car-utils cid <CAR>
 
 Arguments:
-  <car>  the car file for list.
+  <CAR>  the car file for list.
 
 Options:
   -h, --help  Print help
 ```
+
 ### ex subcommand
+
 extract the files in the car file to the target directory.
+
 ```
-Usage: car-utils ex [OPTIONS] -c <car>
+Extract the car files
+
+Usage: car-utils ex [OPTIONS] -c <CAR>
 
 Options:
-  -c <car>         the car file for extract
-  -t <target>      the target directory to extract
+  -c <CAR>         The car file to extract
+  -t <TARGET>      Target directory to extract to
   -h, --help       Print help
 ```
 
 ####  cat subcommand
+
 cat cid content from a car file.
+
 ```
-Usage: car-utils cat -c <cid> <car>
+View cid content from a car file
+
+Usage: car-utils cat -c <CID> <CAR>
 
 Arguments:
-  <car>  the car file for cat.
+  <CAR>  the car file to cat.
 
 Options:
-  -c <cid>      the cid of content for cat.
+  -c <CID>      the cid of content to cat.
   -h, --help    Print help
 ```

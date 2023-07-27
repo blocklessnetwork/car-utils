@@ -2,6 +2,7 @@ use std::{fmt::Display, process::ExitCode};
 
 use blockless_car::error::CarError;
 
+#[derive(Debug)]
 pub(crate) struct UtilError {
     pub(crate) err: String,
     pub(crate) code: u8,

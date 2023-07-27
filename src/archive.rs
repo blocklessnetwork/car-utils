@@ -1,17 +1,23 @@
+use crate::error::UtilError;
 use blockless_car::utils::archive_local;
 use std::path::Path;
 
-use crate::error::UtilError;
+#[derive(Debug, clap::Parser)]
+pub struct ArchiveCommand {
+    #[clap(short, help = "the car file for archive.")]
+    car: String,
 
-/// archive the local file system to car file
-/// `target` is the car file
-/// `source` is the directory where the archive is prepared.
-pub(crate) fn archive_local_fs(
-    target: impl AsRef<Path>,
-    source: impl AsRef<Path>,
-) -> Result<(), UtilError> {
-    let target = target.as_ref();
-    let file = std::fs::File::create(target).unwrap();
-    archive_local(source, file)?;
-    Ok(())
+    #[clap(short, help = "the source directory to be archived.")]
+    source: String,
+}
+
+impl ArchiveCommand {
+    /// archive the local file system to car file
+    /// `target` is the car file
+    /// `source` is the directory where the archive is prepared.
+    pub(crate) fn execute(&self) -> Result<(), UtilError> {
+        let file = std::fs::File::create(self.car.as_ref() as &Path).unwrap(); // todo handle error
+        archive_local(self.source.as_ref() as &Path, file)?;
+        Ok(())
+    }
 }

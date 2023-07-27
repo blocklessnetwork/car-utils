@@ -1,117 +1,63 @@
-use std::process::ExitCode;
-
-use clap::{Arg, ArgMatches, Command};
-
 mod archive;
+mod cat;
 mod error;
 mod extract;
 mod ls;
-mod cat;
-use archive::archive_local_fs;
-use extract::extract_car;
+use clap::{Parser, Subcommand};
 
-fn clap_matches() -> ArgMatches {
-    Command::default()
-        .version("v0.1.5")
-        .arg_required_else_help(true)
-        .arg(
-            Arg::new("version")
-                .long("version")
-                .help("show version.")
-        )
-        .subcommand(
-            Command::new("ar")
-                .about("archive local file system to a car file")
-                .arg(Arg::new("car")
-                    .short('c')
-                    .required(true)
-                    .help("the car file for archive.")
-                )
-                .arg(Arg::new("source")
-                    .short('s')
-                    .required(true)
-                    .help("the source directory to archived")
-                )
-        )
-        .subcommand(
-            Command::new("cat")
-                .about("cat cid content from a car file")
-                .arg(Arg::new("car")
-                    .required(true)
-                    .help("the car file for cat.")
-                )
-                .arg(Arg::new("cid")
-                    .short('c')
-                    .required(true)
-                    .help("the cid of content for cat.")
-                )
-        )
-        .subcommand(
-            Command::new("ls")
-                .about("list the car files")
-                .arg(Arg::new("car")
-                    .required(true)
-                    .help("the car file for list.")
-                )
-        )
-        .subcommand(
-            Command::new("cid")
-                .about("list the car cid")
-                .arg(Arg::new("car")
-                    .required(true)
-                    .help("the car file for list.")
-                )
-        )
-        .subcommand(
-            Command::new("ex")
-                .about("extract the car files")
-                .arg(Arg::new("car")
-                    .short('c')
-                    .required(true)
-                    .help("the car file for extract")
-                )
-                .arg(Arg::new("target")
-                    .short('t')
-                    .required(false)
-                    .help("the target directory to extract")
-                )
-        )
-        .get_matches()
+/// The short version information for car-utils.
+///
+/// - The latest version from Cargo.toml
+///
+/// # Example
+///
+/// ```text
+/// v0.1.5
+/// ```
+pub(crate) const SHORT_VERSION: &str = concat!("v", env!("CARGO_PKG_VERSION"));
+
+#[derive(Debug, Parser)]
+#[command(author, version = SHORT_VERSION, long_version = SHORT_VERSION, about = "car-utils", long_about = None)]
+struct Cli {
+    /// The command to run
+    #[clap(subcommand)]
+    command: Commands,
 }
 
-fn main() -> ExitCode {
-    let command = clap_matches();
-    let result = match command.subcommand() {
-        Some(("ar", subcommad)) => {
-            let car = subcommad.get_one::<String>("car").unwrap();
-            let source = subcommad.get_one::<String>("source").unwrap();
-            archive_local_fs(car, source)
-        }
-        Some(("ls", subcommad)) => {
-            let car = subcommad.get_one::<String>("car").unwrap();
-            ls::list_car_file(car, false)
-        }
-        Some(("cid", subcommad)) => {
-            let car = subcommad.get_one::<String>("car").unwrap();
-            ls::list_car_file(car, true)
-        }
-        Some(("cat", subcommad)) => {
-            let car = subcommad.get_one::<String>("car").unwrap();
-            let cid = subcommad.get_one::<String>("cid").unwrap();
-            cat::cat_content(car, cid)
-        }
-        Some(("ex", subcommad)) => {
-            let car = subcommad.get_one::<String>("car").unwrap();
-            let target = subcommad.get_one::<String>("target");
-            extract_car(car, target)
-        }
-        _ => unreachable!("should not be reached."),
-    };
-    match result {
-        Ok(_) => ExitCode::SUCCESS,
-        Err(e) => {
-            eprintln!("{}", e.err);
-            e.into()
-        }
+/// Commands to be executed
+#[derive(Debug, Subcommand)]
+pub enum Commands {
+    /// Archive local file system to a car file
+    #[command(name = "ar")]
+    Archive(archive::ArchiveCommand),
+
+    /// View cid content from a car file
+    #[command(name = "cat")]
+    Cat(cat::CatCommand),
+
+    /// List the car files
+    #[command(name = "ls")]
+    Ls(ls::LsCommand),
+
+    /// List the car cid
+    #[command(name = "cid")]
+    Cid(ls::LsCommand),
+
+    /// Extract the car files
+    #[command(name = "ex")]
+    Ex(extract::ExCommand),
+}
+
+fn main() {
+    let opt = Cli::parse();
+    if let Err(err) = match opt.command {
+        Commands::Archive(command) => command.execute(),
+        Commands::Cat(command) => command.execute(),
+        Commands::Ls(command) => command.execute(false),
+        Commands::Cid(command) => command.execute(true),
+        Commands::Ex(command) => command.execute(),
+    } {
+        eprintln!("Error: {err:?}");
+        std::process::exit(1);
     }
 }

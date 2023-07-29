@@ -3,7 +3,7 @@ use std::{
     fs::{self, File},
     io::{self, Read},
     path::{Path, PathBuf},
-    rc::Rc
+    rc::Rc,
 };
 
 use crate::{
@@ -15,13 +15,7 @@ use crate::{
     CarHeader, Ipld,
 };
 use cid::{
-    multihash::{
-        Code, 
-        MultihashDigest, 
-        Hasher,
-        Multihash,
-        Blake2b256,
-    },
+    multihash::{Blake2b256, Code, Hasher, Multihash, MultihashDigest},
     Cid,
 };
 use ipld::{pb::DagPbCodec, prelude::Codec, raw::RawCodec};
@@ -33,7 +27,7 @@ type WalkPath = (Rc<PathBuf>, Option<usize>);
 
 type WalkPathCache = HashMap<Rc<PathBuf>, UnixFs>;
 
-const MAX_SECTION_SIZE: usize = 8<<20;
+const MAX_SECTION_SIZE: usize = 8 << 20;
 
 struct LimitedFile<'a> {
     inner: &'a mut File,
@@ -70,20 +64,18 @@ impl<'a> Read for LimitedFile<'a> {
 
 fn cid_gen() -> impl FnMut(WriteStream) -> Option<Result<Cid, CarError>> {
     let mut hash_codec = Blake2b256::default();
-    return move |w: WriteStream| {
-        match w {
-            WriteStream::Bytes(bs) => {
-                hash_codec.update(bs);
-                None
-            },
-            WriteStream::End => {
-                let bs = hash_codec.finalize();
-                let h = match Multihash::wrap(BLAKE2B256_CODEC, bs) {
-                    Ok(h) => h,
-                    Err(e) => return Some(Err(CarError::Parsing(e.to_string()))),
-                };
-                Some(Ok(Cid::new_v1(RawCodec.into(), h)))
-            },
+    return move |w: WriteStream| match w {
+        WriteStream::Bytes(bs) => {
+            hash_codec.update(bs);
+            None
+        }
+        WriteStream::End => {
+            let bs = hash_codec.finalize();
+            let h = match Multihash::wrap(BLAKE2B256_CODEC, bs) {
+                Ok(h) => h,
+                Err(e) => return Some(Err(CarError::Parsing(e.to_string()))),
+            };
+            Some(Ok(Cid::new_v1(RawCodec.into(), h)))
         }
     };
 }
@@ -123,16 +115,19 @@ where
                             //split file when file size is bigger than the max section size.
                             let file_secs = (file_size / MAX_SECTION_SIZE) + 1;
                             //split the big file into small file and calc the cids.
-                            let links = (0..file_secs).map(|i| {
-                                let mut limit_file = LimitedFile::new(&mut file, MAX_SECTION_SIZE);
-                                let size = if i < file_secs - 1 {
-                                    MAX_SECTION_SIZE
-                                } else  {
-                                    file_size % MAX_SECTION_SIZE
-                                };
-                                let cid = writer.write_stream(cid_gen(), size, &mut limit_file);
-                                cid.map(|cid| Link::new(cid, String::new(), size as _))
-                            }).collect::<Result<Vec<Link>, CarError>>()?;
+                            let links = (0..file_secs)
+                                .map(|i| {
+                                    let mut limit_file =
+                                        LimitedFile::new(&mut file, MAX_SECTION_SIZE);
+                                    let size = if i < file_secs - 1 {
+                                        MAX_SECTION_SIZE
+                                    } else {
+                                        file_size % MAX_SECTION_SIZE
+                                    };
+                                    let cid = writer.write_stream(cid_gen(), size, &mut limit_file);
+                                    cid.map(|cid| Link::new(cid, String::new(), size as _))
+                                })
+                                .collect::<Result<Vec<Link>, CarError>>()?;
                             let unix_fs = UnixFs {
                                 links,
                                 file_type: FileType::File,
@@ -179,7 +174,7 @@ where
     writer.rewrite_header(header)
 }
 
-pub fn pipe_raw_cid<R, W>(r: &mut R, w: &mut W) -> Result<Cid, CarError> 
+pub fn pipe_raw_cid<R, W>(r: &mut R, w: &mut W) -> Result<Cid, CarError>
 where
     R: std::io::Read,
     W: std::io::Write,

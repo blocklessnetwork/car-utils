@@ -1,6 +1,7 @@
 use std::{
     collections::VecDeque,
-    io::{self, Write}, str::FromStr,
+    io::{self, Write},
+    str::FromStr,
 };
 
 use cid::Cid;
@@ -14,8 +15,7 @@ pub fn ipld_write(
     reader: &mut impl CarReader,
     cid: Cid,
     output: &mut impl Write,
-) -> Result<(), CarError> 
-{
+) -> Result<(), CarError> {
     let mut vecq = VecDeque::new();
     vecq.push_back(cid);
     ipld_write_inner(reader, &mut vecq, output)

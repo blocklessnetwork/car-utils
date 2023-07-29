@@ -106,7 +106,6 @@ pub struct Link {
 }
 
 impl Link {
-
     pub fn new(hash: Cid, name: String, tsize: u64) -> Self {
         Self {
             hash,
@@ -135,7 +134,6 @@ impl Link {
     pub fn guess_type(&self) -> FileType {
         self.guess_type
     }
-
 }
 
 impl<'a> From<Data<'a>> for UnixFs {

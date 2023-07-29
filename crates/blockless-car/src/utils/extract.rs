@@ -29,7 +29,7 @@ pub fn extract_ipld(
 }
 
 struct UnixfsCache {
-    inner: UnixFs, 
+    inner: UnixFs,
     path: PathBuf,
 }
 
@@ -39,15 +39,16 @@ struct IndexRelation {
 }
 
 impl IndexRelation {
-    fn full_path(rel: Option<&IndexRelation>, cache: &HashMap<Cid, UnixfsCache>) -> Option<PathBuf> {
-        let filename = rel.and_then(|r| cache.get(&r.parent_cid)
-            .map(|f| f.inner.links[r.index].name_ref())
-        );
-        let parent_path = rel
-            .and_then(|r| cache
+    fn full_path(
+        rel: Option<&IndexRelation>,
+        cache: &HashMap<Cid, UnixfsCache>,
+    ) -> Option<PathBuf> {
+        let filename = rel.and_then(|r| {
+            cache
                 .get(&r.parent_cid)
-                .map(|p| &p.path)
-            );
+                .map(|f| f.inner.links[r.index].name_ref())
+        });
+        let parent_path = rel.and_then(|r| cache.get(&r.parent_cid).map(|p| &p.path));
         parent_path.zip(filename).map(|(p, n)| {
             let path: PathBuf = p.into();
             path.join(n)
@@ -60,7 +61,6 @@ enum Type {
     File,
     FileLinks(Box<UnixFs>),
 }
-
 
 /// inner function, extract files from CAR file.
 /// if the `parent` path is none, will use current path as root path.
@@ -75,9 +75,7 @@ fn extract_ipld_inner(
     let mut relations: HashMap<Cid, IndexRelation> = Default::default();
     queue.push_back(cid);
     let root_path = match parent {
-        Some(p) => {
-            p
-        },
+        Some(p) => p,
         None => cid.to_string().into(),
     };
     while let Some(cid) = queue.pop_front() {
@@ -93,7 +91,7 @@ fn extract_ipld_inner(
                     .create(true)
                     .write(true)
                     .open(&full_path)
-                    .unwrap();  
+                    .unwrap();
                 file.write_all(&b).unwrap();
                 Type::File
             }
@@ -101,10 +99,10 @@ fn extract_ipld_inner(
                 let unixfs: UnixFs = (cid, m).try_into()?;
                 match unixfs.file_type {
                     FileType::File => Type::FileLinks(Box::new(unixfs)),
-                    _=> {
+                    _ => {
                         for (idx, link) in unixfs.links().iter().enumerate() {
                             let rel = IndexRelation {
-                                parent_cid: cid, 
+                                parent_cid: cid,
                                 index: idx,
                             };
                             queue.push_back(link.hash);
@@ -113,17 +111,20 @@ fn extract_ipld_inner(
                         let rel = relations.get(&cid);
                         let path = IndexRelation::full_path(rel, &unixfs_cache)
                             .unwrap_or_else(|| root_path.clone());
-                        unixfs_cache.insert(cid, UnixfsCache { 
-                            inner: unixfs, 
-                            path,
-                        });
+                        unixfs_cache.insert(
+                            cid,
+                            UnixfsCache {
+                                inner: unixfs,
+                                path,
+                            },
+                        );
                         Type::Directory
                     }
                 }
             }
             _ => unimplemented!("not implement"),
         };
-        
+
         match file_links {
             Type::FileLinks(f) => {
                 let mut file = fs::OpenOptions::new()
@@ -141,10 +142,12 @@ fn extract_ipld_inner(
                     }
                 }
             }
-            Type::Directory => if !full_path.exists() {
-                fs::create_dir(&full_path)?
-            },
-            _ => {},
+            Type::Directory => {
+                if !full_path.exists() {
+                    fs::create_dir(&full_path)?
+                }
+            }
+            _ => {}
         }
     }
     Ok(())

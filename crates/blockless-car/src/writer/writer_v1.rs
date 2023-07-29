@@ -72,10 +72,15 @@ where
         self.write_head()
     }
 
-    fn write_stream<F, R>(&mut self, mut cid_f: F, stream_len: usize, r: &mut R) -> Result<Cid, CarError>
+    fn write_stream<F, R>(
+        &mut self,
+        mut cid_f: F,
+        stream_len: usize,
+        r: &mut R,
+    ) -> Result<Cid, CarError>
     where
         R: std::io::Read,
-        F: FnMut(WriteStream) -> Option<Result<Cid, CarError>> 
+        F: FnMut(WriteStream) -> Option<Result<Cid, CarError>>,
     {
         if !self.is_header_written {
             self.write_head()?;

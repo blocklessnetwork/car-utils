@@ -1,10 +1,10 @@
-use cid::Cid;
 use blockless_car::{
     error::CarError,
     reader::{self, CarReader},
     unixfs::UnixFs,
     utils::cat_ipld,
 };
+use cid::Cid;
 
 /// Cat the file in car file by file id
 /// e.g. ```cargo run -p blockless-car --example cat_file bafkreiabltrd5zm73pvi7plq25pef3hm7jxhbi3kv4hapegrkfpkqtkbme```

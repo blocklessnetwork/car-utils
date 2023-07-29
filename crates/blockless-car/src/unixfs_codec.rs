@@ -7,7 +7,7 @@ use crate::{
     codec::Encoder,
     error::CarError,
     pb::unixfs::Data,
-    unixfs::{FileType, UnixFs, Link},
+    unixfs::{FileType, Link, UnixFs},
     Decoder, Ipld,
 };
 
@@ -24,23 +24,25 @@ impl Decoder<UnixFs> for Ipld {
                     return Err(CarError::Parsing("ipld format error".into()));
                 };
                 if let Some(ipld::Ipld::List(links)) = m.get("Links") {
-                    links.iter().for_each(|l| if let ipld::Ipld::Map(ref m) = l {
-                        let cid = if let Some(ipld::Ipld::Link(cid)) = m.get("Hash") {
-                            *cid
-                        } else {
-                            return;
-                        };
-                        let name = if let Some(ipld::Ipld::String(name)) = m.get("Name") {
-                            name.clone()
-                        } else {
-                            String::new()
-                        };
-                        let size = if let Some(ipld::Ipld::Integer(size)) = m.get("Tsize") {
-                            *size as u64
-                        } else {
-                            0
-                        };
-                        unix_fs.add_link(Link::new(cid, name, size));
+                    links.iter().for_each(|l| {
+                        if let ipld::Ipld::Map(ref m) = l {
+                            let cid = if let Some(ipld::Ipld::Link(cid)) = m.get("Hash") {
+                                *cid
+                            } else {
+                                return;
+                            };
+                            let name = if let Some(ipld::Ipld::String(name)) = m.get("Name") {
+                                name.clone()
+                            } else {
+                                String::new()
+                            };
+                            let size = if let Some(ipld::Ipld::Integer(size)) = m.get("Tsize") {
+                                *size as u64
+                            } else {
+                                0
+                            };
+                            unix_fs.add_link(Link::new(cid, name, size));
+                        }
                     });
                 }
                 Ok(unix_fs)
@@ -72,9 +74,7 @@ impl TryFrom<(Cid, Ipld)> for UnixFs {
 fn convert_to_ipld(value: &Link) -> Result<Ipld, CarError> {
     let mut map: BTreeMap<String, Ipld> = BTreeMap::new();
     map.insert("Hash".to_string(), Ipld::Link(value.hash));
-    let file_name: Ipld = Ipld::String(
-        value.name_ref().into()
-    );
+    let file_name: Ipld = Ipld::String(value.name_ref().into());
     let tsize = Ipld::Integer(value.tsize as i128);
     map.insert("Name".to_string(), file_name);
     map.insert("Tsize".to_string(), tsize);

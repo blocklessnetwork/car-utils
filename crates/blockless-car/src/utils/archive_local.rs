@@ -100,7 +100,7 @@ where
     
     let (walk_paths, mut path_cache) = walk_dir(path)?;
     for walk_path in &walk_paths {
-        process_path(root_path.clone(), &mut root_cid, walk_path, &mut path_cache, &mut writer)?;
+        process_path(root_path.clone(), &mut root_cid, &mut writer, walk_path, &mut path_cache)?;
     }
     let root_cid = root_cid.ok_or(CarError::NotFound("root cid not found.".to_string()))?;
     let header = CarHeader::V1(CarHeaderV1::new(vec![root_cid]));
@@ -110,9 +110,9 @@ where
 fn process_path<W: std::io::Write + std::io::Seek>(
     root_path: impl AsRef<Path>,
     root_cid: &mut Option<Cid>,
+    writer: &mut CarWriterV1<W>,
     (abs_path, parent_idx): &(Rc<PathBuf>, Option<usize>),
     path_cache: &mut WalkPathCache,
-    writer: &mut CarWriterV1<W>,
 ) -> Result<(), CarError> {
     let unixfs = path_cache.get_mut(abs_path).unwrap();
     for link in unixfs.links.iter_mut() {

@@ -4,11 +4,11 @@ use std::path::Path;
 
 #[derive(Debug, clap::Parser)]
 pub struct ArchiveCommand {
-    #[clap(short, help = "the car file for archive.")]
-    car: String,
-
     #[clap(short, help = "the source directory to be archived.")]
     source: String,
+
+    #[clap(short, help = "the car file for archive.")]
+    car: String,
 }
 
 impl ArchiveCommand {

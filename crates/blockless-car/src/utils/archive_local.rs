@@ -227,7 +227,7 @@ pub fn raw_cid(data: &[u8]) -> Cid {
 
 /// walk all directory, and record the directory informations.
 /// `WalkPath` contain the index in children.
-pub fn walk_dir(root: impl AsRef<Path>) -> Result<(Vec<WalkPath>, WalkPathCache), CarError> {
+pub fn walk_path(root: impl AsRef<Path>) -> Result<(Vec<WalkPath>, WalkPathCache), CarError> {
     let root_path: Rc<PathBuf> = Rc::new(root.as_ref().absolutize()?.into());
 
     let mut queue = VecDeque::from(vec![root_path.clone()]);

@@ -274,3 +274,72 @@ pub fn walk_dir(root: impl AsRef<Path>) -> Result<(Vec<WalkPath>, WalkPathCache)
 
     Ok((walk_paths, path_cache))
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use tempdir::TempDir;
+    use std::io::Write;
+
+    #[test]
+    fn test_archive_local_dir_nested() {
+        // create a temp file: /tmp/blockless-car-temp-dir-1/nested/test.txt
+        let temp_dir = TempDir::new("blockless-car-temp-dir-1").unwrap();
+        let temp_dir_nested = temp_dir.path().join("nested");
+        std::fs::create_dir_all(temp_dir_nested.as_ref() as &Path).unwrap();
+        
+        let temp_file = temp_dir_nested.join("test.txt");
+        let mut file = File::create(&temp_file).unwrap();
+        file.write_all(b"hello world").unwrap();
+
+        let temp_output_dir = TempDir::new("blockless-car-temp-output-dir").unwrap();
+        let temp_output_file = temp_output_dir.path().join("test.car");
+        let car_file = std::fs::File::create(temp_output_file.as_ref() as &Path).unwrap();
+
+        archive_local(&temp_dir, &car_file, false).unwrap();
+
+        assert_eq!(car_file.metadata().unwrap().len(), 303);
+    }
+
+    #[test]
+    fn test_archive_local_file_no_wrap() {
+        // create a temp file: /tmp/blockless-car-temp-dir-2/test.txt
+        let temp_dir = TempDir::new("blockless-car-temp-dir-2").unwrap();
+        let temp_file = temp_dir.path().join("test.txt");
+        
+        let mut file = File::create(&temp_file).unwrap();
+        file.write_all(b"hello world").unwrap();
+
+        let temp_output_dir = TempDir::new("blockless-car-temp-output-dir").unwrap();
+        let temp_output_file = temp_output_dir.path().join("test.car");
+        let car_file = std::fs::File::create(temp_output_file.as_ref() as &Path).unwrap();
+
+        // archive the file
+        archive_local(&temp_file, &car_file, false).unwrap();
+
+        assert_eq!(car_file.metadata().unwrap().len(), 208);
+
+        let temp_output_file = temp_output_dir.path().join("test-dir.car");
+        let car_file = std::fs::File::create(temp_output_file.as_ref() as &Path).unwrap();
+
+        // archive the dir (parent of the file)
+        archive_local(&temp_dir, &car_file, false).unwrap();
+
+        assert_eq!(car_file.metadata().unwrap().len(), 208); // same as the file
+    }
+
+    #[test] // TODO: remove this test once we support file wrapping
+    fn test_file_wrapping_unsupported() {
+        // create a temp file: /tmp/blockless-car-temp-dir-3/test.txt
+        let temp_dir = TempDir::new("blockless-car-temp-dir-3").unwrap();
+        let temp_file = temp_dir.path().join("test.txt");
+        let mut file = File::create(&temp_file).unwrap();
+        file.write_all(b"hello world").unwrap();
+
+        let temp_output_dir = TempDir::new("blockless-car-temp-output-dir").unwrap();
+        let temp_output_file = temp_output_dir.path().join("test.car");
+        let car_file = std::fs::File::create(temp_output_file.as_ref() as &Path).unwrap();
+
+        assert_eq!(archive_local(&temp_dir, &car_file, true).is_err(), true);
+    }
+}

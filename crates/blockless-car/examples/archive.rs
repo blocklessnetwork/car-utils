@@ -8,5 +8,5 @@ fn main() {
         .nth(2)
         .expect("need the target file as argument");
     let file = std::fs::File::create(target).unwrap();
-    archive_local(file_name, file).unwrap();
+    archive_local(file_name, file, true).unwrap();
 }

@@ -83,13 +83,20 @@ fn cid_gen() -> impl FnMut(WriteStream) -> Option<Result<Cid, CarError>> {
 /// archive the directory to the target CAR format file
 /// `path` is the directory archived in to the CAR file.
 /// `to_carfile` is the target file.
-pub fn archive_local<T>(path: impl AsRef<Path>, to_carfile: T) -> Result<(), CarError>
+pub fn archive_local<T>(path: impl AsRef<Path>, to_carfile: T, no_wrap_file: bool) -> Result<(), CarError>
 where
     T: std::io::Write + std::io::Seek,
 {
-    let src_path = path.as_ref();
+    if no_wrap_file { // fail early; TODO: remove this once implemented
+        return Err(CarError::NotImplemented("--no-wrap is not implemented.".to_string()));
+    }
+
+    let mut src_path = path.as_ref();
     if !src_path.exists() {
         return Err(CarError::IO(io::ErrorKind::NotFound.into()));
+    }
+    if src_path.is_file() && !no_wrap_file { // no-wrap only applicable to files
+       src_path = src_path.parent().unwrap(); 
     }
     let root_path = src_path.absolutize().unwrap();
     let path = root_path.to_path_buf();
@@ -97,11 +104,12 @@ where
     let mut root_cid = Some(empty_pb_cid());
     let header = CarHeader::new_v1(vec![root_cid.unwrap()]);
     let mut writer = CarWriterV1::new(to_carfile, header);
-    
-    let (walk_paths, mut path_cache) = walk_dir(path)?;
+
+    let (walk_paths, mut path_cache) = walk_path(path)?;
     for walk_path in &walk_paths {
-        process_path(root_path.clone(), &mut root_cid, &mut writer, walk_path, &mut path_cache)?;
+        process_path(root_path.as_ref(), &mut root_cid, &mut writer, walk_path, &mut path_cache)?;
     }
+
     let root_cid = root_cid.ok_or(CarError::NotFound("root cid not found.".to_string()))?;
     let header = CarHeader::V1(CarHeaderV1::new(vec![root_cid]));
     writer.rewrite_header(header)

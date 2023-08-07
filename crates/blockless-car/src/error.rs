@@ -19,4 +19,7 @@ pub enum CarError {
 
     #[error("Not found {0}")]
     NotFound(String),
+
+    #[error("Invalid not implemented: {0}")]
+    NotImplemented(String),
 }

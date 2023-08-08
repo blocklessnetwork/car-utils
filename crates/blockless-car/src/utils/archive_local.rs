@@ -64,7 +64,7 @@ impl<'a> Read for LimitedFile<'a> {
 
 fn cid_gen() -> impl FnMut(WriteStream) -> Option<Result<Cid, CarError>> {
     let mut hash_codec = Blake2b256::default();
-    return move |w: WriteStream| match w {
+    move |w: WriteStream| match w {
         WriteStream::Bytes(bs) => {
             hash_codec.update(bs);
             None
@@ -77,19 +77,26 @@ fn cid_gen() -> impl FnMut(WriteStream) -> Option<Result<Cid, CarError>> {
             };
             Some(Ok(Cid::new_v1(RawCodec.into(), h)))
         }
-    };
+    }
 }
 
 /// archive the directory to the target CAR format file
 /// `path` is the directory archived in to the CAR file.
 /// `to_carfile` is the target file.
-pub fn archive_local<T>(path: impl AsRef<Path>, to_carfile: T) -> Result<(), CarError>
+pub fn archive_local<T>(path: impl AsRef<Path>, to_carfile: T, no_wrap_file: bool) -> Result<(), CarError>
 where
     T: std::io::Write + std::io::Seek,
 {
-    let src_path = path.as_ref();
+    if no_wrap_file { // fail early; TODO: remove this once implemented
+        return Err(CarError::NotImplemented("--no-wrap is not implemented.".to_string()));
+    }
+
+    let mut src_path = path.as_ref();
     if !src_path.exists() {
         return Err(CarError::IO(io::ErrorKind::NotFound.into()));
+    }
+    if src_path.is_file() && !no_wrap_file { // no-wrap only applicable to files
+       src_path = src_path.parent().unwrap(); 
     }
     let root_path = src_path.absolutize().unwrap();
     let path = root_path.to_path_buf();
@@ -97,81 +104,91 @@ where
     let mut root_cid = Some(empty_pb_cid());
     let header = CarHeader::new_v1(vec![root_cid.unwrap()]);
     let mut writer = CarWriterV1::new(to_carfile, header);
-    walk_dir(
-        path,
-        |(abs_path, parent_idx), path_map| -> Result<(), CarError> {
-            let unixfs = path_map.get_mut(abs_path).unwrap();
-            for link in unixfs.links.iter_mut() {
-                match link.guess_type {
-                    FileType::Directory => {}
-                    FileType::File => {
-                        let filepath = abs_path.join(link.name_ref());
-                        let mut file = fs::OpenOptions::new().read(true).open(filepath)?;
-                        let file_size = link.tsize as usize;
-                        if file_size < MAX_SECTION_SIZE {
-                            let file_cid = writer.write_stream(cid_gen(), file_size, &mut file)?;
-                            link.hash = file_cid;
-                        } else {
-                            //split file when file size is bigger than the max section size.
-                            let file_secs = (file_size / MAX_SECTION_SIZE) + 1;
-                            //split the big file into small file and calc the cids.
-                            let links = (0..file_secs)
-                                .map(|i| {
-                                    let mut limit_file =
-                                        LimitedFile::new(&mut file, MAX_SECTION_SIZE);
-                                    let size = if i < file_secs - 1 {
-                                        MAX_SECTION_SIZE
-                                    } else {
-                                        file_size % MAX_SECTION_SIZE
-                                    };
-                                    let cid = writer.write_stream(cid_gen(), size, &mut limit_file);
-                                    cid.map(|cid| Link::new(cid, String::new(), size as _))
-                                })
-                                .collect::<Result<Vec<Link>, CarError>>()?;
-                            let unix_fs = UnixFs {
-                                links,
-                                file_type: FileType::File,
-                                file_size: Some(file_size as u64),
-                                ..Default::default()
-                            };
-                            let file_ipld = unix_fs.encode()?;
-                            let bs = DagPbCodec
-                                .encode(&file_ipld)
-                                .map_err(|e| CarError::Parsing(e.to_string()))?;
-                            let cid = pb_cid(&bs);
-                            writer.write(cid, bs)?;
-                            link.hash = cid;
-                        }
-                    }
-                    _ => unreachable!("not support!"),
-                }
-            }
-            let fs_ipld: Ipld = unixfs.encode()?;
-            let bs = DagPbCodec
-                .encode(&fs_ipld)
-                .map_err(|e| CarError::Parsing(e.to_string()))?;
-            let cid = pb_cid(&bs);
-            if root_path.as_ref() == abs_path.as_ref() {
-                root_cid = Some(cid);
-            }
-            writer.write(cid, bs)?;
-            unixfs.cid = Some(cid);
-            match abs_path.parent() {
-                Some(parent) => {
-                    let parent = Rc::new(parent.to_path_buf());
 
-                    if let Some((p, pos)) = path_map.get_mut(&parent).zip(*parent_idx) {
-                        p.links[pos].hash = cid;
-                    }
-                }
-                None => unimplemented!("should not happend"),
-            }
-            Ok(())
-        },
-    )?;
+    let (walk_paths, mut path_cache) = walk_path(path)?;
+    for walk_path in &walk_paths {
+        process_path(root_path.as_ref(), &mut root_cid, &mut writer, walk_path, &mut path_cache)?;
+    }
+
     let root_cid = root_cid.ok_or(CarError::NotFound("root cid not found.".to_string()))?;
     let header = CarHeader::V1(CarHeaderV1::new(vec![root_cid]));
     writer.rewrite_header(header)
+}
+
+fn process_path<W: std::io::Write + std::io::Seek>(
+    root_path: impl AsRef<Path>,
+    root_cid: &mut Option<Cid>,
+    writer: &mut CarWriterV1<W>,
+    (abs_path, parent_idx): &(Rc<PathBuf>, Option<usize>),
+    path_cache: &mut WalkPathCache,
+) -> Result<(), CarError> {
+    let unixfs = path_cache.get_mut(abs_path).unwrap();
+    for link in unixfs.links.iter_mut() {
+        match link.guess_type {
+            FileType::Directory => {}, // ignore processing directory
+            FileType::File => {
+                let filepath = abs_path.join(link.name_ref());
+                let mut file = fs::OpenOptions::new().read(true).open(filepath)?;
+                let file_size = link.tsize as usize;
+                if file_size < MAX_SECTION_SIZE {
+                    let file_cid = writer.write_stream(cid_gen(), file_size, &mut file)?;
+                    link.hash = file_cid;
+                } else {
+                    //split file when file size is bigger than the max section size.
+                    let file_secs = (file_size / MAX_SECTION_SIZE) + 1;
+                    //split the big file into small file and calc the cids.
+                    let links = (0..file_secs)
+                        .map(|i| {
+                            let mut limit_file =
+                                LimitedFile::new(&mut file, MAX_SECTION_SIZE);
+                            let size = if i < file_secs - 1 {
+                                MAX_SECTION_SIZE
+                            } else {
+                                file_size % MAX_SECTION_SIZE
+                            };
+                            let cid = writer.write_stream(cid_gen(), size, &mut limit_file);
+                            cid.map(|cid| Link::new(cid, String::new(), size as _))
+                        })
+                        .collect::<Result<Vec<Link>, CarError>>()?;
+                    let unix_fs = UnixFs {
+                        links,
+                        file_type: FileType::File,
+                        file_size: Some(file_size as u64),
+                        ..Default::default()
+                    };
+                    let file_ipld = unix_fs.encode()?;
+                    let bs = DagPbCodec
+                        .encode(&file_ipld)
+                        .map_err(|e| CarError::Parsing(e.to_string()))?;
+                    let cid = pb_cid(&bs);
+                    writer.write(cid, bs)?;
+                    link.hash = cid;
+                }
+            }
+            _ => unreachable!("unsupported filetype!"),
+        }
+    }
+    let fs_ipld: Ipld = unixfs.encode()?;
+    let bs = DagPbCodec
+        .encode(&fs_ipld)
+        .map_err(|e| CarError::Parsing(e.to_string()))?;
+    let cid = pb_cid(&bs);
+    if root_path.as_ref() == abs_path.as_ref() {
+        *root_cid = Some(cid);
+    }
+    writer.write(cid, bs)?;
+    unixfs.cid = Some(cid);
+    match abs_path.parent() {
+        Some(parent) => {
+            let parent = Rc::new(parent.to_path_buf());
+
+            if let Some((p, pos)) = path_cache.get_mut(&parent).zip(*parent_idx) {
+                p.links[pos].hash = cid;
+            }
+        }
+        None => unimplemented!("should not happen"),
+    }
+    Ok(())
 }
 
 pub fn pipe_raw_cid<R, W>(r: &mut R, w: &mut W) -> Result<Cid, CarError>
@@ -209,62 +226,120 @@ pub fn raw_cid(data: &[u8]) -> Cid {
 }
 
 /// walk all directory, and record the directory informations.
-/// `dir_queue` is the dir queue for hold the directory.
 /// `WalkPath` contain the index in children.
-fn walk_inner(
-    dir_queue: &mut VecDeque<Rc<PathBuf>>,
-    path_map: &mut WalkPathCache,
-) -> Result<Vec<WalkPath>, CarError> {
-    let mut dirs = Vec::new();
-    while let Some(dir_path) = dir_queue.pop_back() {
+pub fn walk_path(root: impl AsRef<Path>) -> Result<(Vec<WalkPath>, WalkPathCache), CarError> {
+    let root_path: Rc<PathBuf> = Rc::new(root.as_ref().absolutize()?.into());
+
+    let mut queue = VecDeque::from(vec![root_path.clone()]);
+    let mut path_cache = HashMap::new();
+    let mut walk_paths = Vec::new();
+    while let Some(dir_path) = queue.pop_back() {
         let mut unix_dir = UnixFs {
             file_type: FileType::Directory,
             ..Default::default()
         };
+
         for entry in fs::read_dir(&*dir_path)? {
             let entry = entry?;
             let file_type = entry.file_type()?;
-            let file_path = entry.path();
-            let abs_path = file_path.absolutize()?.to_path_buf();
-
+            let abs_path = entry.path().absolutize()?.to_path_buf();
             let name = entry.file_name().to_str().unwrap_or("").to_string();
             let tsize = entry.metadata()?.len();
-            let mut link = Link {
-                name,
-                tsize,
-                ..Default::default()
-            };
+
             if file_type.is_file() {
-                link.guess_type = FileType::File;
-                unix_dir.add_link(link);
+                unix_dir.add_link(Link {
+                    name,
+                    tsize,
+                    guess_type: FileType::File,
+                    ..Default::default()
+                });
             } else if file_type.is_dir() {
                 let rc_abs_path = Rc::new(abs_path);
-                link.guess_type = FileType::Directory;
-                let idx = unix_dir.add_link(link);
-                dirs.push((rc_abs_path.clone(), Some(idx)));
-                dir_queue.push_back(rc_abs_path);
+                let idx = unix_dir.add_link(Link {
+                    name,
+                    tsize,
+                    guess_type: FileType::Directory,
+                    ..Default::default()
+                });
+                walk_paths.push((rc_abs_path.clone(), Some(idx)));
+                queue.push_back(rc_abs_path);
             }
-            //skip other types.
         }
-        path_map.insert(dir_path, unix_dir);
+
+        path_cache.insert(dir_path, unix_dir);
     }
-    dirs.reverse();
-    Ok(dirs)
+
+    walk_paths.reverse();
+    walk_paths.push((root_path, None));
+
+    Ok((walk_paths, path_cache))
 }
 
-pub fn walk_dir<T>(root: impl AsRef<Path>, mut walker: T) -> Result<(), CarError>
-where
-    T: FnMut(&WalkPath, &mut WalkPathCache) -> Result<(), CarError>,
-{
-    let src_path = root.as_ref().absolutize()?;
-    let mut queue = VecDeque::new();
-    let mut path_map: HashMap<Rc<PathBuf>, UnixFs> = HashMap::new();
-    let root_path: Rc<PathBuf> = Rc::new(src_path.into());
-    queue.push_back(root_path.clone());
-    let mut keys = walk_inner(&mut queue, &mut path_map)?;
-    keys.push((root_path, None));
-    for key in keys.iter() {
-        walker(key, &mut path_map)?;
+#[cfg(test)]
+mod test {
+    use super::*;
+    use tempdir::TempDir;
+    use std::io::Write;
+
+    #[test]
+    fn test_archive_local_dir_nested() {
+        // create a temp file: /tmp/blockless-car-temp-dir-1/nested/test.txt
+        let temp_dir = TempDir::new("blockless-car-temp-dir-1").unwrap();
+        let temp_dir_nested = temp_dir.path().join("nested");
+        std::fs::create_dir_all(temp_dir_nested.as_ref() as &Path).unwrap();
+        
+        let temp_file = temp_dir_nested.join("test.txt");
+        let mut file = File::create(&temp_file).unwrap();
+        file.write_all(b"hello world").unwrap();
+
+        let temp_output_dir = TempDir::new("blockless-car-temp-output-dir").unwrap();
+        let temp_output_file = temp_output_dir.path().join("test.car");
+        let car_file = std::fs::File::create(temp_output_file.as_ref() as &Path).unwrap();
+
+        archive_local(&temp_dir, &car_file, false).unwrap();
+
+        assert_eq!(car_file.metadata().unwrap().len(), 303);
     }
-    Ok(())
+
+    #[test]
+    fn test_archive_local_file_no_wrap() {
+        // create a temp file: /tmp/blockless-car-temp-dir-2/test.txt
+        let temp_dir = TempDir::new("blockless-car-temp-dir-2").unwrap();
+        let temp_file = temp_dir.path().join("test.txt");
+        
+        let mut file = File::create(&temp_file).unwrap();
+        file.write_all(b"hello world").unwrap();
+
+        let temp_output_dir = TempDir::new("blockless-car-temp-output-dir").unwrap();
+        let temp_output_file = temp_output_dir.path().join("test.car");
+        let car_file = std::fs::File::create(temp_output_file.as_ref() as &Path).unwrap();
+
+        // archive the file
+        archive_local(&temp_file, &car_file, false).unwrap();
+
+        assert_eq!(car_file.metadata().unwrap().len(), 208);
+
+        let temp_output_file = temp_output_dir.path().join("test-dir.car");
+        let car_file = std::fs::File::create(temp_output_file.as_ref() as &Path).unwrap();
+
+        // archive the dir (parent of the file)
+        archive_local(&temp_dir, &car_file, false).unwrap();
+
+        assert_eq!(car_file.metadata().unwrap().len(), 208); // same as the file
+    }
+
+    #[test] // TODO: remove this test once we support file wrapping
+    fn test_file_wrapping_unsupported() {
+        // create a temp file: /tmp/blockless-car-temp-dir-3/test.txt
+        let temp_dir = TempDir::new("blockless-car-temp-dir-3").unwrap();
+        let temp_file = temp_dir.path().join("test.txt");
+        let mut file = File::create(&temp_file).unwrap();
+        file.write_all(b"hello world").unwrap();
+
+        let temp_output_dir = TempDir::new("blockless-car-temp-output-dir").unwrap();
+        let temp_output_file = temp_output_dir.path().join("test.car");
+        let car_file = std::fs::File::create(temp_output_file.as_ref() as &Path).unwrap();
+
+        assert_eq!(archive_local(&temp_dir, &car_file, true).is_err(), true);
+    }
 }

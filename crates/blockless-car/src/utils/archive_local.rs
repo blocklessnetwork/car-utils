@@ -64,7 +64,7 @@ impl<'a> Read for LimitedFile<'a> {
 
 fn cid_gen() -> impl FnMut(WriteStream) -> Option<Result<Cid, CarError>> {
     let mut hash_codec = Blake2b256::default();
-    return move |w: WriteStream| match w {
+    move |w: WriteStream| match w {
         WriteStream::Bytes(bs) => {
             hash_codec.update(bs);
             None
@@ -77,7 +77,7 @@ fn cid_gen() -> impl FnMut(WriteStream) -> Option<Result<Cid, CarError>> {
             };
             Some(Ok(Cid::new_v1(RawCodec.into(), h)))
         }
-    };
+    }
 }
 
 /// archive the directory to the target CAR format file

@@ -4,17 +4,17 @@ use std::path::Path;
 
 #[derive(Debug, clap::Parser)]
 pub struct PackCommand {
-    #[clap(short, help = "the source directory to be archived.")]
+    /// The source file or directory to be packed.
     source: String,
 
     #[clap(
-        help = "wrap the file (applies to files only).",
+        help = "Wrap the file (applies to files only).",
         default_value = "false",
         long = "no-wrap"
     )]
     no_wrap_file: bool,
 
-    #[clap(short, help = "the car file to output.")]
+    #[clap(short, help = "The car file to output.")]
     output: String,
 }
 

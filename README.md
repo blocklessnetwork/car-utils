@@ -1,57 +1,74 @@
 # car-utils
 
-The project is utils of CAR file which used in WASM runtime.
+The project is utils of `CAR` file which used in WASM runtime.
 
-if you wanna lean about WASM runtime, please vist "https://github.com/blocklessnetwork/runtime/".
+if you wanna lean about WASM runtime, please vist
+"https://github.com/blocklessnetwork/runtime/".
 
 ## How to intsall.
 
-use cargo install to install the command
+Use cargo install to install the CLI:
 
 ```
 cargo install car-utils
 ```
 
-car-utils install in the cargo bin directory.
+Note: car-utils installs to the cargo bin directory.
 
 ## How to use.
 
-execute the command `car-utils --help` to show the command help.
+Execute the command `car-utils --help` to show the command help.
 
 ```
+car-utils
+
 Usage: car-utils <COMMAND>
 
 Commands:
-  ar    Archive local file system to a car file
-  cat   View cid content from a car file
-  ls    List the car files
-  cid   List the car cid
-  ex    Extract the car files
-  help  Print this message or the help of the given subcommand(s)
+  pack    Pack files into a CAR
+  unpack  Unpack files and directories from a CAR
+  ls      List the car files
+  roots   List root CIDs from a CAR
+  cat     View cid content from a car file
+  help    Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help     Print help
   -V, --version  Print version
 ```
 
-###  ar subcommand
-
-archive the local directory to the car file.
+### pack command
 
 ```
-Archive local file system to a car file
+Pack files into a CAR
 
-Usage: car-utils ar -c <CAR> -s <SOURCE>
+Usage: car-utils pack [OPTIONS] -o <OUTPUT> <SOURCE>
+
+Arguments:
+  <SOURCE>  The source file or directory to be packed
 
 Options:
-  -c <CAR>         the car file for archive.
-  -s <SOURCE>      the source directory to be archived.
+      --no-wrap    Wrap the file (applies to files only).
+  -o <OUTPUT>      The car file to output.
   -h, --help       Print help
 ```
 
-###  ls subcommand
+### unpack command
 
-list file structures in the car file.
+```
+Unpack files and directories from a CAR
+
+Usage: car-utils unpack [OPTIONS] <CAR>
+
+Arguments:
+  <CAR>  The car file to extract
+
+Options:
+  -o <OUTPUT>      Target directory to unpack car to.
+  -h, --help       Print help
+```
+
+### ls command
 
 ```
 List the car files
@@ -65,14 +82,12 @@ Options:
   -h, --help  Print help
 ```
 
-####  cid subcommand
-
-list file cids in the car file.
+#### roots command
 
 ```
-List the car cid
+List root CIDs from a CAR
 
-Usage: car-utils cid <CAR>
+Usage: car-utils roots <CAR>
 
 Arguments:
   <CAR>  the car file for list.
@@ -81,24 +96,7 @@ Options:
   -h, --help  Print help
 ```
 
-### ex subcommand
-
-extract the files in the car file to the target directory.
-
-```
-Extract the car files
-
-Usage: car-utils ex [OPTIONS] -c <CAR>
-
-Options:
-  -c <CAR>         The car file to extract
-  -t <TARGET>      Target directory to extract to
-  -h, --help       Print help
-```
-
-####  cat subcommand
-
-cat cid content from a car file.
+#### cat command
 
 ```
 View cid content from a car file

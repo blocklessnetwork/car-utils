@@ -5,15 +5,15 @@ use blockless_car::reader::{self as car_reader, CarReader};
 use blockless_car::utils::extract_ipld;
 
 #[derive(Debug, clap::Parser)]
-pub struct ExCommand {
-    #[clap(short, help = "The car file to extract")]
+pub struct UnpackCommand {
+    /// The car file to extract.
     car: String,
 
-    #[clap(short, help = "Target directory to extract to")]
-    target: Option<String>,
+    #[clap(short, help = "Target directory to unpack car to.")]
+    output: Option<String>,
 }
 
-impl ExCommand {
+impl UnpackCommand {
     /// extract car file to local file system.
     /// `car` the car file to extract.
     /// `target` target directory to extract.
@@ -29,7 +29,7 @@ impl ExCommand {
         let mut reader = car_reader::new_v1(file)?;
         let roots = reader.header().roots();
         for cid in roots {
-            let target: Option<&Path> = self.target.as_ref().map(|s| s.as_ref());
+            let target: Option<&Path> = self.output.as_ref().map(|s| s.as_ref());
             extract_ipld(&mut reader, cid, target)?;
         }
         Ok(())

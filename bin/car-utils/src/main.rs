@@ -1,8 +1,8 @@
-mod archive;
 mod cat;
 mod error;
-mod extract;
 mod ls;
+mod pack;
+mod unpack;
 use clap::{Parser, Subcommand};
 
 /// The short version information for car-utils.
@@ -27,35 +27,35 @@ struct Cli {
 /// Commands to be executed
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    /// Archive local file system to a car file
-    #[command(name = "ar")]
-    Archive(archive::ArchiveCommand),
+    /// Pack files into a CAR.
+    #[command(name = "pack", alias = "p")]
+    Pack(pack::PackCommand),
 
-    /// View cid content from a car file
-    #[command(name = "cat")]
-    Cat(cat::CatCommand),
+    /// Unpack files and directories from a CAR.
+    #[command(name = "unpack", alias = "un")]
+    Unpack(unpack::UnpackCommand),
 
-    /// List the car files
+    /// List the car files.
     #[command(name = "ls")]
     Ls(ls::LsCommand),
 
-    /// List the car cid
-    #[command(name = "cid")]
-    Cid(ls::LsCommand),
+    /// List root CIDs from a CAR.
+    #[command(name = "roots")]
+    Roots(ls::LsCommand),
 
-    /// Extract the car files
-    #[command(name = "ex")]
-    Ex(extract::ExCommand),
+    /// View cid content from a car file.
+    #[command(name = "cat")]
+    Cat(cat::CatCommand),
 }
 
 fn main() {
     let opt = Cli::parse();
     if let Err(err) = match opt.command {
-        Commands::Archive(command) => command.execute(),
-        Commands::Cat(command) => command.execute(),
+        Commands::Pack(command) => command.execute(),
+        Commands::Unpack(command) => command.execute(),
         Commands::Ls(command) => command.execute(false),
-        Commands::Cid(command) => command.execute(true),
-        Commands::Ex(command) => command.execute(),
+        Commands::Roots(command) => command.execute(true),
+        Commands::Cat(command) => command.execute(),
     } {
         eprintln!("Error: {err:?}");
         std::process::exit(1);

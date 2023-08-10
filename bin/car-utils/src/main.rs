@@ -31,9 +31,6 @@ pub enum Commands {
     #[command(name = "pack")]
     Pack(pack::PackCommand),
 
-    /// View cid content from a car file
-    #[command(name = "cat")]
-    Cat(cat::CatCommand),
     /// Unpack files and directories from a CAR.
     #[command(name = "unpack")]
     Unpack(unpack::UnpackCommand),
@@ -46,16 +43,19 @@ pub enum Commands {
     #[command(name = "roots")]
     Roots(ls::LsCommand),
 
+    /// View cid content from a car file
+    #[command(name = "cat")]
+    Cat(cat::CatCommand),
 }
 
 fn main() {
     let opt = Cli::parse();
     if let Err(err) = match opt.command {
-        Commands::Cat(command) => command.execute(),
         Commands::Pack(command) => command.execute(),
         Commands::Unpack(command) => command.execute(),
         Commands::Ls(command) => command.execute(false),
         Commands::Roots(command) => command.execute(true),
+        Commands::Cat(command) => command.execute(),
     } {
         eprintln!("Error: {err:?}");
         std::process::exit(1);

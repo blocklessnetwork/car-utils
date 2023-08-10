@@ -6,10 +6,10 @@ use blockless_car::utils::extract_ipld;
 
 #[derive(Debug, clap::Parser)]
 pub struct UnpackCommand {
-    #[clap(short, help = "The car file to extract")]
+    /// The car file to extract.
     car: String,
 
-    #[clap(short, help = "Target directory to unpack car to")]
+    #[clap(short, help = "Target directory to unpack car to.")]
     output: Option<String>,
 }
 

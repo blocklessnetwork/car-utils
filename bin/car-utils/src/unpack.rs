@@ -5,7 +5,7 @@ use blockless_car::reader::{self as car_reader, CarReader};
 use blockless_car::utils::extract_ipld;
 
 #[derive(Debug, clap::Parser)]
-pub struct ExCommand {
+pub struct UnpackCommand {
     #[clap(short, help = "The car file to extract")]
     car: String,
 
@@ -13,7 +13,7 @@ pub struct ExCommand {
     target: Option<String>,
 }
 
-impl ExCommand {
+impl UnpackCommand {
     /// extract car file to local file system.
     /// `car` the car file to extract.
     /// `target` target directory to extract.

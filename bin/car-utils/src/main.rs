@@ -32,7 +32,7 @@ pub enum Commands {
     Pack(pack::PackCommand),
 
     /// Unpack files and directories from a CAR.
-    #[command(name = "unpack")]
+    #[command(name = "unpack", alias = "un")]
     Unpack(unpack::UnpackCommand),
 
     /// List the car files.

@@ -14,8 +14,8 @@ pub struct PackCommand {
     )]
     no_wrap_file: bool,
 
-    #[clap(short, help = "the car file for archive.")]
-    car: String,
+    #[clap(short, help = "the car file to output.")]
+    output: String,
 }
 
 impl PackCommand {
@@ -23,7 +23,7 @@ impl PackCommand {
     /// `target` is the car file
     /// `source` is the directory where the archive is prepared.
     pub(crate) fn execute(&self) -> Result<(), UtilError> {
-        let file = std::fs::File::create(self.car.as_ref() as &Path).unwrap(); // todo handle error
+        let file = std::fs::File::create(self.output.as_ref() as &Path).unwrap(); // todo handle error
         archive_local(self.source.as_ref() as &Path, file, self.no_wrap_file)?;
         Ok(())
     }

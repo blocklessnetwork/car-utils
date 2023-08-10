@@ -42,9 +42,9 @@ pub enum Commands {
     #[command(name = "ls")]
     Ls(ls::LsCommand),
 
-    /// List the car cid
-    #[command(name = "cid")]
-    Cid(ls::LsCommand),
+    /// List root CIDs from a CAR.
+    #[command(name = "roots")]
+    Roots(ls::LsCommand),
 
 }
 
@@ -55,7 +55,7 @@ fn main() {
         Commands::Pack(command) => command.execute(),
         Commands::Unpack(command) => command.execute(),
         Commands::Ls(command) => command.execute(false),
-        Commands::Cid(command) => command.execute(true),
+        Commands::Roots(command) => command.execute(true),
     } {
         eprintln!("Error: {err:?}");
         std::process::exit(1);

@@ -1,8 +1,8 @@
 mod cat;
 mod error;
-mod extract;
 mod ls;
 mod pack;
+mod unpack;
 use clap::{Parser, Subcommand};
 
 /// The short version information for car-utils.
@@ -34,6 +34,9 @@ pub enum Commands {
     /// View cid content from a car file
     #[command(name = "cat")]
     Cat(cat::CatCommand),
+    /// Unpack files and directories from a CAR.
+    #[command(name = "unpack")]
+    Unpack(unpack::UnpackCommand),
 
     /// List the car files
     #[command(name = "ls")]
@@ -43,9 +46,6 @@ pub enum Commands {
     #[command(name = "cid")]
     Cid(ls::LsCommand),
 
-    /// Extract the car files
-    #[command(name = "ex")]
-    Ex(extract::ExCommand),
 }
 
 fn main() {
@@ -53,9 +53,9 @@ fn main() {
     if let Err(err) = match opt.command {
         Commands::Cat(command) => command.execute(),
         Commands::Pack(command) => command.execute(),
+        Commands::Unpack(command) => command.execute(),
         Commands::Ls(command) => command.execute(false),
         Commands::Cid(command) => command.execute(true),
-        Commands::Ex(command) => command.execute(),
     } {
         eprintln!("Error: {err:?}");
         std::process::exit(1);

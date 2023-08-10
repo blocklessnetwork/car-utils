@@ -9,8 +9,8 @@ pub struct UnpackCommand {
     #[clap(short, help = "The car file to extract")]
     car: String,
 
-    #[clap(short, help = "Target directory to extract to")]
-    target: Option<String>,
+    #[clap(short, help = "Target directory to unpack car to")]
+    output: Option<String>,
 }
 
 impl UnpackCommand {
@@ -29,7 +29,7 @@ impl UnpackCommand {
         let mut reader = car_reader::new_v1(file)?;
         let roots = reader.header().roots();
         for cid in roots {
-            let target: Option<&Path> = self.target.as_ref().map(|s| s.as_ref());
+            let target: Option<&Path> = self.output.as_ref().map(|s| s.as_ref());
             extract_ipld(&mut reader, cid, target)?;
         }
         Ok(())

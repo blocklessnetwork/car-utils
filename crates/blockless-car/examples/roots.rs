@@ -7,7 +7,7 @@ use blockless_car::{
 use cid::Cid;
 
 /// Cat the file in car file by file id
-/// e.g. ```cargo run -p blockless-car --example cat_file bafkreiabltrd5zm73pvi7plq25pef3hm7jxhbi3kv4hapegrkfpkqtkbme```
+/// e.g. ```cargo run -p blockless-car --example roots bafkreiabltrd5zm73pvi7plq25pef3hm7jxhbi3kv4hapegrkfpkqtkbme```
 /// the example cat file with cid in carv1-basic.car
 fn main() {
     // let cid = std::env::args().nth(1).expect("use cid as argument");

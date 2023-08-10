@@ -1,6 +1,6 @@
 use blockless_car::reader;
 
-/// e.g. ```cargo run -p blockless-car --example ls file```
+/// e.g. ```cargo run -p blockless-car --example ls <source-car-file>```
 /// the example list file infomation in carv1-basic.car file
 fn main() {
     let file_name = std::env::args().nth(1);

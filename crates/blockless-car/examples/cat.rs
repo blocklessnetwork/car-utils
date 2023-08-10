@@ -4,7 +4,7 @@ use blockless_car::{
 };
 
 /// Cat the file in car file by file id
-/// e.g. ```cargo run -p blockless-car --example cat_file file name.```
+/// e.g. ```cargo run -p blockless-car --example cat `file name````
 /// the example cat used file is carv1-basic.car
 fn main() {
     let file_name = std::env::args().nth(1).expect("use filename as argument");

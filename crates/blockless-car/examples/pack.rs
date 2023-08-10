@@ -1,7 +1,7 @@
 use blockless_car::utils::archive_local;
 
 /// Cat the file in car file by file id
-/// e.g. ```cargo run -p blockless-car --example `archive directory` `target car file`.```
+/// e.g. ```cargo run -p blockless-car --example pack <target-car-file>```
 fn main() {
     let file_name = std::env::args().nth(1).expect("use directory as argument");
     let target = std::env::args()

@@ -4,7 +4,7 @@ use blockless_car::{
 };
 
 /// extract all files in car file by file id
-/// e.g. ```cargo run -p blockless-car --example extract```
+/// e.g. ```cargo run -p blockless-car --example unpack <source-car-file>```
 /// the example cat used file is carv1-basic.car
 fn main() {
     let file_name = std::env::args().nth(1);

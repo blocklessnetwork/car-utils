@@ -35,7 +35,7 @@ pub enum Commands {
     #[command(name = "unpack")]
     Unpack(unpack::UnpackCommand),
 
-    /// List the car files
+    /// List the car files.
     #[command(name = "ls")]
     Ls(ls::LsCommand),
 
@@ -43,7 +43,7 @@ pub enum Commands {
     #[command(name = "roots")]
     Roots(ls::LsCommand),
 
-    /// View cid content from a car file
+    /// View cid content from a car file.
     #[command(name = "cat")]
     Cat(cat::CatCommand),
 }

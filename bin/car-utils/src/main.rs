@@ -28,7 +28,7 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Commands {
     /// Pack files into a CAR.
-    #[command(name = "pack")]
+    #[command(name = "pack", alias = "p")]
     Pack(pack::PackCommand),
 
     /// Unpack files and directories from a CAR.

@@ -3,18 +3,22 @@ use blockless_car::utils::archive_local;
 use std::path::Path;
 
 #[derive(Debug, clap::Parser)]
-pub struct ArchiveCommand {
+pub struct PackCommand {
     #[clap(short, help = "the source directory to be archived.")]
     source: String,
 
-    #[clap(help = "wrap the file (applies to files only).", default_value = "false", long = "no-wrap")]
+    #[clap(
+        help = "wrap the file (applies to files only).",
+        default_value = "false",
+        long = "no-wrap"
+    )]
     no_wrap_file: bool,
 
     #[clap(short, help = "the car file for archive.")]
     car: String,
 }
 
-impl ArchiveCommand {
+impl PackCommand {
     /// archive the local file system to car file
     /// `target` is the car file
     /// `source` is the directory where the archive is prepared.

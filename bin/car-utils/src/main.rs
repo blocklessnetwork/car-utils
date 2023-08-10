@@ -1,8 +1,8 @@
-mod archive;
 mod cat;
 mod error;
 mod extract;
 mod ls;
+mod pack;
 use clap::{Parser, Subcommand};
 
 /// The short version information for car-utils.
@@ -27,9 +27,9 @@ struct Cli {
 /// Commands to be executed
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    /// Archive local file system to a car file
-    #[command(name = "ar")]
-    Archive(archive::ArchiveCommand),
+    /// Pack files into a CAR.
+    #[command(name = "pack")]
+    Pack(pack::PackCommand),
 
     /// View cid content from a car file
     #[command(name = "cat")]
@@ -51,8 +51,8 @@ pub enum Commands {
 fn main() {
     let opt = Cli::parse();
     if let Err(err) = match opt.command {
-        Commands::Archive(command) => command.execute(),
         Commands::Cat(command) => command.execute(),
+        Commands::Pack(command) => command.execute(),
         Commands::Ls(command) => command.execute(false),
         Commands::Cid(command) => command.execute(true),
         Commands::Ex(command) => command.execute(),

@@ -305,8 +305,8 @@ pub fn walk_path(path: impl AsRef<Path>) -> Result<(Vec<WalkPath>, WalkPathCache
 #[cfg(test)]
 mod test {
     use super::*;
-    use tempdir::TempDir;
     use std::io::Write;
+    use tempdir::TempDir;
 
     #[test]
     fn test_archive_local_dir_nested() {
@@ -314,7 +314,7 @@ mod test {
         let temp_dir = TempDir::new("blockless-car-temp-dir-1").unwrap();
         let temp_dir_nested = temp_dir.path().join("nested");
         std::fs::create_dir_all(temp_dir_nested.as_ref() as &Path).unwrap();
-        
+
         let temp_file = temp_dir_nested.join("test.txt");
         let mut file = File::create(&temp_file).unwrap();
         file.write_all(b"hello world").unwrap();
@@ -333,7 +333,7 @@ mod test {
         // create a temp file: /tmp/blockless-car-temp-dir-2/test.txt
         let temp_dir = TempDir::new("blockless-car-temp-dir-2").unwrap();
         let temp_file = temp_dir.path().join("test.txt");
-        
+
         let mut file = File::create(&temp_file).unwrap();
         file.write_all(b"hello world").unwrap();
 
@@ -355,8 +355,8 @@ mod test {
         assert_eq!(car_file.metadata().unwrap().len(), 208); // same as the file
     }
 
-    #[test] // TODO: remove this test once we support file wrapping
-    fn test_file_wrapping_unsupported() {
+    #[test]
+    fn test_file_wrapping_supported() {
         // create a temp file: /tmp/blockless-car-temp-dir-3/test.txt
         let temp_dir = TempDir::new("blockless-car-temp-dir-3").unwrap();
         let temp_file = temp_dir.path().join("test.txt");
@@ -367,6 +367,10 @@ mod test {
         let temp_output_file = temp_output_dir.path().join("test.car");
         let car_file = std::fs::File::create(temp_output_file.as_ref() as &Path).unwrap();
 
-        assert_eq!(archive_local(&temp_dir, &car_file, true).is_err(), true);
+        // archive the file with no-wrap
+        assert_eq!(archive_local(&temp_dir, &car_file, true).is_err(), false);
+
+        // validate car-file is created and has content
+        assert_eq!(car_file.metadata().unwrap().len(), 208);
     }
 }

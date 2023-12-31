@@ -93,7 +93,6 @@ impl HasherCodec for Blake2b256 {
 
 fn cid_gen<H: Hasher + Default + HasherCodec>(
 ) -> impl FnMut(WriteStream) -> Option<Result<Cid, CarError>> {
-    println!("Hasher Init");
     let mut hasher = H::default();
     move |w: WriteStream| match w {
         WriteStream::Bytes(bs) => {
@@ -212,7 +211,6 @@ fn process_file<W: std::io::Write + std::io::Seek>(
     } else {
         //split file when file size is bigger than the max section size.
         let file_secs = (file_size / MAX_SECTION_SIZE) + 1;
-        println!("file_secs: {}", file_secs);
         //split the big file into small file and calc the cids.
         let mut block_sizes = vec![];
         let links = (0..file_secs)
@@ -224,7 +222,6 @@ fn process_file<W: std::io::Write + std::io::Seek>(
                     file_size % MAX_SECTION_SIZE
                 };
                 block_sizes.push(size as u64);
-                println!("size: {}", size);
                 let cid = stream_block(writer, size, &mut limit_file, hasher_codec);
                 cid.map(|cid| Link::new(cid, String::new(), size as _))
             })
@@ -257,19 +254,12 @@ fn process_path<W: std::io::Write + std::io::Seek>(
     hasher_codec: multicodec::Codec,
 ) -> Result<(), CarError> {
     let unix_fs = path_cache.get_mut(abs_path).unwrap();
-    let file_type = unix_fs.file_type();
-    println!(
-        "processing abs_path {:?} with type {:?}",
-        abs_path, file_type
-    );
     let mut parent_tsize = 0;
     for link in unix_fs.links.iter_mut() {
-        println!("processing link {:?}", link);
         if let FileType::File = link.file_type {
             let (hash, size) = process_file(&abs_path.join(&link.name), writer, hasher_codec)?;
             link.hash = hash;
             link.tsize = size as u64;
-            println!("link tsize:\n{:?}\n", link.tsize);
         }
         parent_tsize += link.tsize;
     }
@@ -282,12 +272,9 @@ fn process_path<W: std::io::Write + std::io::Seek>(
         });
 
     let fs_ipld: Ipld = unix_fs.encode()?;
-    println!("Created Ipld: {:?}", fs_ipld);
     let bs = DagPbCodec
         .encode(&fs_ipld)
         .map_err(|e| CarError::Parsing(e.to_string()))?;
-    println!("bs:\n{:?}\n", bs);
-    println!("bs len:\n{:?}\n", bs.len());
     parent_tsize += bs.len() as u64;
     let cid = pb_cid(&bs, hasher_codec);
     if root_path.as_ref() == abs_path.as_ref() {
@@ -297,13 +284,9 @@ fn process_path<W: std::io::Write + std::io::Seek>(
     unix_fs.cid = Some(cid);
     match abs_path.parent() {
         Some(parent) => {
-            println!("parent path is {:?}", parent);
             let parent = Rc::new(parent.to_path_buf());
             if let Some((p, pos)) = path_cache.get_mut(&parent).zip(*parent_idx) {
-                println!("parent is {:?}", p);
                 p.links[pos].hash = cid;
-                println!("parent link is {:?}", p.links[pos]);
-                println!("adding {} to existing {}", parent_tsize, p.links[pos].tsize);
                 p.links[pos].tsize = parent_tsize;
             }
         }
@@ -462,7 +445,6 @@ mod test {
         // compare hash of CAR file to precomputed hash
         let bytes = std::fs::read(&temp_output_file).unwrap(); // Vec<u8>
         let hash = Code::Sha2_256.digest(&bytes);
-        std::fs::copy(temp_output_file, "result.car").unwrap();
         assert_eq!(hash.digest().encode_hex::<String>(), REFERENCE_HASH);
     }
 

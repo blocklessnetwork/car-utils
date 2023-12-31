@@ -47,10 +47,6 @@ where
             self.write_head()?;
         }
         if !self.hashes_written.contains(&cid) {
-            println!("write_block");
-            println!("cid: {:?}", cid);
-            println!("data: {:?}", data.as_ref());
-
             let mut cid_buff: Vec<u8> = Vec::new();
             cid.write_bytes(&mut cid_buff)
                 .map_err(|e| CarError::Parsing(e.to_string()))?;
@@ -90,7 +86,6 @@ where
     R: std::io::Read + std::io::Seek,
     F: FnMut(WriteStream) -> Option<Result<Cid, CarError>>,
     {
-        println!("write_stream");
         if !self.is_header_written {
             self.write_head()?;
         }
@@ -110,16 +105,12 @@ where
             None => unreachable!("cid function cannot return None here"),
         };
 
-        println!("cid: {:?}", cid);
-        println!("stream_len: {:?}", stream_len);
         if !self.hashes_written.contains(&cid) {
-            println!("Hash is new");
             // write length and CID to stream
             let mut cid_buf: Vec<u8> = Vec::new();
             cid.write_bytes(&mut cid_buf)
                 .map_err(|e| CarError::Parsing(e.to_string()))?;
             let sec_len = stream_len + cid_buf.len();
-            println!("sec_len: {:?}", sec_len);
             self.inner.write_varint(sec_len)?;
             self.inner.write_all(cid_buf.as_slice())?;
 
@@ -129,7 +120,6 @@ where
                 if n == 0 {
                     break;
                 }
-                println!("writing data...");
                 self.inner.write_all(&buf[0..n])?;
             }
             self.hashes_written.push(cid);

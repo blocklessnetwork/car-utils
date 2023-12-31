@@ -88,7 +88,7 @@ pub trait CarReader {
             if matches!(fs_ipld, Ipld::Map(_)) {
                 let unixfs: UnixFs = (root_cid, fs_ipld).try_into()?;
                 for ufs in unixfs.links() {
-                    if ufs.name_ref() == f {
+                    if ufs.name == f {
                         return Ok(ufs.hash);
                     }
                     searchq.push_back(ufs.hash);

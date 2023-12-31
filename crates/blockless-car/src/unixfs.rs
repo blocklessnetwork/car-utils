@@ -100,7 +100,7 @@ pub struct UnixFs {
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct Link {
     pub hash: Cid,
-    pub guess_type: FileType,
+    pub file_type: FileType,
     pub name: String,
     pub tsize: u64,
 }
@@ -111,28 +111,8 @@ impl Link {
             hash,
             name,
             tsize,
-            guess_type: FileType::Raw,
+            file_type: FileType::Raw,
         }
-    }
-
-    #[inline(always)]
-    pub fn hash(&self) -> Cid {
-        self.hash
-    }
-
-    #[inline(always)]
-    pub fn name_ref(&self) -> &str {
-        &self.name
-    }
-
-    #[inline(always)]
-    pub fn tsize(&self) -> u64 {
-        self.tsize
-    }
-
-    #[inline(always)]
-    pub fn guess_type(&self) -> FileType {
-        self.guess_type
     }
 }
 

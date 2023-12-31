@@ -1,6 +1,4 @@
 [workspace]
-members = [
-    "bin/car-utils",
-    "crates/blockless-car",
-]
+resolver = "2"
+members = ["bin/car-utils", "crates/blockless-car"]
 default-members = ["bin/car-utils"]

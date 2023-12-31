@@ -74,7 +74,7 @@ impl TryFrom<(Cid, Ipld)> for UnixFs {
 fn convert_to_ipld(value: &Link) -> Result<Ipld, CarError> {
     let mut map: BTreeMap<String, Ipld> = BTreeMap::new();
     map.insert("Hash".to_string(), Ipld::Link(value.hash));
-    let file_name: Ipld = Ipld::String(value.name_ref().into());
+    let file_name: Ipld = Ipld::String(value.name.to_owned());
     let tsize = Ipld::Integer(value.tsize as i128);
     map.insert("Name".to_string(), file_name);
     map.insert("Tsize".to_string(), tsize);

@@ -1,7 +1,6 @@
 use std::{
     collections::{HashMap, VecDeque},
-    fs::{self, File},
-    io::{self, Read, Seek},
+    fs, io,
     path::{Path, PathBuf},
     rc::Rc,
 };
@@ -28,94 +27,10 @@ type Size = usize;
 const MAX_SECTION_SIZE: usize = 262144;
 const MAX_LINK_COUNT: usize = 174;
 
-struct LimitedFile<'a> {
-    inner: &'a mut File,
-    readn: usize,
-    limited: usize,
-    pos: u64,
-}
-
-impl<'a> LimitedFile<'a> {
-    fn new(inner: &'a mut File, limited: usize) -> Self {
-        Self {
-            pos: inner.stream_position().unwrap(),
-            inner,
-            limited,
-            readn: 0,
-        }
-    }
-}
-
-impl<'a> Read for LimitedFile<'a> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if self.readn == self.limited {
-            return Ok(0);
-        }
-        let buf = if self.readn + buf.len() > self.limited {
-            &mut buf[..(self.limited - self.readn)]
-        } else {
-            buf
-        };
-        self.inner.read(buf).map(|n| {
-            self.readn += n;
-            n
-        })
-    }
-}
-
-impl<'a> Seek for LimitedFile<'a> {
-    fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
-        match pos {
-            io::SeekFrom::Start(0) => {
-                self.inner.seek(io::SeekFrom::Start(self.pos))?;
-                self.readn = 0;
-                Ok(0)
-            }
-            _ => unimplemented!("Can only jump back to beginning of LimitedFile"),
-        }
-    }
-}
-
-trait HasherCodec {
-    fn codec(&self) -> multicodec::Codec;
-}
-
-impl HasherCodec for Sha2_256 {
-    fn codec(&self) -> multicodec::Codec {
-        multicodec::Codec::Sha2_256
-    }
-}
-
-impl HasherCodec for Blake2b256 {
-    fn codec(&self) -> multicodec::Codec {
-        multicodec::Codec::Blake2b_256
-    }
-}
-
-fn cid_gen<H: Hasher + Default + HasherCodec>(
-) -> impl FnMut(WriteStream) -> Option<Result<Cid, CarError>> {
-    let mut hasher = H::default();
-    move |w: WriteStream| match w {
-        WriteStream::Bytes(bs) => {
-            hasher.update(bs);
-            None
-        }
-        WriteStream::End => {
-            let code = hasher.codec();
-            let bs = hasher.finalize();
-            let h = match Multihash::wrap(code.code() as u64, bs) {
-                Ok(h) => h,
-                Err(e) => return Some(Err(CarError::Parsing(e.to_string()))),
-            };
-            Some(Ok(Cid::new_v1(RawCodec.into(), h)))
-        }
-    }
-}
-
 /// archive the directory to the target CAR format file
 /// `path` is the directory archived in to the CAR file.
 /// `to_carfile` is the target file.
-pub fn archive_local<T>(
+pub fn pack_files<T>(
     path: impl AsRef<Path>,
     to_carfile: T,
     hasher_codec: multicodec::Codec,
@@ -137,7 +52,9 @@ where
 
     if src_path.is_file() {
         // if the source is a file then do not walk directory tree, process the file directly
-        let (hash, size) = process_file(src_path, &mut writer, hasher_codec)?;
+        let mut file = fs::OpenOptions::new().read(true).open(src_path)?;
+        let file_size = file.metadata()?.len() as usize;
+        let (hash, size) = process_file(&mut file, &mut writer, file_size, hasher_codec)?;
         if no_wrap_file {
             root_cid = hash;
         } else {
@@ -204,6 +121,60 @@ where
     Ok(root_cid)
 }
 
+pub fn pack_buffer<W, R>(
+    reader: &mut R,
+    writer: W,
+    size: usize,
+    hasher_codec: multicodec::Codec,
+) -> Result<Cid, CarError>
+where
+    W: std::io::Write + std::io::Seek,
+    R: std::io::Read + std::io::Seek,
+{
+    let header = CarHeader::new_v1(vec![empty_pb_cid(hasher_codec)]);
+    let mut writer = CarWriterV1::new(writer, header);
+    let (hash, _) = process_file(reader, &mut writer, size, hasher_codec)?;
+    let header = CarHeader::V1(CarHeaderV1::new(vec![hash]));
+    writer.rewrite_header(header)?;
+    Ok(hash)
+}
+
+trait HasherCodec {
+    fn codec(&self) -> multicodec::Codec;
+}
+
+impl HasherCodec for Sha2_256 {
+    fn codec(&self) -> multicodec::Codec {
+        multicodec::Codec::Sha2_256
+    }
+}
+
+impl HasherCodec for Blake2b256 {
+    fn codec(&self) -> multicodec::Codec {
+        multicodec::Codec::Blake2b_256
+    }
+}
+
+fn cid_gen<H: Hasher + Default + HasherCodec>(
+) -> impl FnMut(WriteStream) -> Option<Result<Cid, CarError>> {
+    let mut hasher = H::default();
+    move |w: WriteStream| match w {
+        WriteStream::Bytes(bs) => {
+            hasher.update(bs);
+            None
+        }
+        WriteStream::End => {
+            let code = hasher.codec();
+            let bs = hasher.finalize();
+            let h = match Multihash::wrap(code.code() as u64, bs) {
+                Ok(h) => h,
+                Err(e) => return Some(Err(CarError::Parsing(e.to_string()))),
+            };
+            Some(Ok(Cid::new_v1(RawCodec.into(), h)))
+        }
+    }
+}
+
 fn stream_block<R, W>(
     writer: &mut CarWriterV1<W>,
     stream_len: usize,
@@ -223,34 +194,33 @@ where
     }
 }
 
-fn process_file<W: std::io::Write + std::io::Seek>(
-    path: &Path,
+fn process_file<W, R>(
+    reader: &mut R,
     writer: &mut CarWriterV1<W>,
+    size: usize,
     hasher_codec: multicodec::Codec,
-) -> Result<(Cid, Size), CarError> {
-    let mut file = fs::OpenOptions::new().read(true).open(path)?;
-    let file_size = file.metadata()?.len() as usize;
-    if file_size < MAX_SECTION_SIZE {
-        Ok((
-            stream_block(writer, file_size, &mut file, hasher_codec)?,
-            file_size,
-        ))
+) -> Result<(Cid, Size), CarError>
+where
+    W: std::io::Write + std::io::Seek,
+    R: std::io::Read + std::io::Seek,
+{
+    if size < MAX_SECTION_SIZE {
+        Ok((stream_block(writer, size, reader, hasher_codec)?, size))
     } else {
-        let mut secs = file_size / MAX_SECTION_SIZE;
-        if file_size % MAX_SECTION_SIZE > 0 {
+        let mut secs = size / MAX_SECTION_SIZE;
+        if size % MAX_SECTION_SIZE > 0 {
             secs += 1;
         }
         let mut block_sizes = vec![];
         let mut links = (0..secs)
             .map(|i| {
-                let mut limit_file = LimitedFile::new(&mut file, MAX_SECTION_SIZE);
                 let size = if i < secs - 1 {
                     MAX_SECTION_SIZE
                 } else {
-                    file_size % MAX_SECTION_SIZE
+                    size % MAX_SECTION_SIZE
                 };
                 block_sizes.push(size as u64);
-                let cid = stream_block(writer, size, &mut limit_file, hasher_codec);
+                let cid = stream_block(writer, size, reader, hasher_codec);
                 cid.map(|cid| Link {
                     hash: cid,
                     file_type: FileType::Raw,
@@ -330,7 +300,11 @@ fn process_path<W: std::io::Write + std::io::Seek>(
     let mut parent_tsize = 0;
     for link in unix_fs.links.iter_mut() {
         if let FileType::File = link.file_type {
-            let (hash, size) = process_file(&abs_path.join(&link.name), writer, hasher_codec)?;
+            let mut file = fs::OpenOptions::new()
+                .read(true)
+                .open(&abs_path.join(&link.name))?;
+            let file_size = file.metadata()?.len() as usize;
+            let (hash, size) = process_file(&mut file, writer, file_size, hasher_codec)?;
             link.hash = hash;
             link.tsize = size as u64;
         }
@@ -438,7 +412,8 @@ mod test {
     use rand_chacha::ChaCha8Rng;
     use std::{
         cmp,
-        io::{BufWriter, Write},
+        fs::File,
+        io::{BufWriter, Cursor, Write},
         str::FromStr,
     };
     use tempdir::TempDir;
@@ -497,7 +472,7 @@ mod test {
     }
 
     #[test]
-    fn test_small_file_no_wrap_false() {
+    fn test_pack_files_small_file_no_wrap_false() {
         let temp_dir = TempDir::new("blockless-car-temp-dir").unwrap();
 
         // create a root dir with a fixed name (temp_dir name has a random suffix)
@@ -520,12 +495,12 @@ mod test {
         };
 
         let test_cid =
-            archive_local(&temp_file, &car_file, multicodec::Codec::Sha2_256, false).unwrap();
+            pack_files(&temp_file, &car_file, multicodec::Codec::Sha2_256, false).unwrap();
         assert_eq!(test_cid, reference);
     }
 
     #[test]
-    fn test_small_file_no_wrap_true() {
+    fn test_pack_files_small_file_no_wrap_true() {
         let temp_dir = TempDir::new("blockless-car-temp-dir").unwrap();
         let temp_file = temp_dir.path().join("test.txt");
         let mut file = File::create(&temp_file).unwrap();
@@ -542,12 +517,12 @@ mod test {
         };
 
         let test_cid =
-            archive_local(&temp_file, &car_file, multicodec::Codec::Sha2_256, true).unwrap();
+            pack_files(&temp_file, &car_file, multicodec::Codec::Sha2_256, true).unwrap();
         assert_eq!(test_cid, reference);
     }
 
     #[test]
-    fn test_large_file_no_wrap_false() {
+    fn test_pack_files_large_file_no_wrap_false() {
         let temp_dir = TempDir::new("blockless-car-temp-dir").unwrap();
 
         // create a root dir with a fixed name (temp_dir name has a random suffix)
@@ -568,12 +543,12 @@ mod test {
         };
 
         let test_cid =
-            archive_local(&temp_file, &car_file, multicodec::Codec::Sha2_256, false).unwrap();
+            pack_files(&temp_file, &car_file, multicodec::Codec::Sha2_256, false).unwrap();
         assert_eq!(test_cid, reference);
     }
 
     #[test]
-    fn test_large_file_no_wrap_true() {
+    fn test_pack_files_large_file_no_wrap_true() {
         let temp_dir = TempDir::new("blockless-car-temp-dir").unwrap();
         let temp_file = temp_dir.path().join("data.bin");
         write_large_file(&temp_file, 1000000);
@@ -589,12 +564,12 @@ mod test {
         };
 
         let test_cid =
-            archive_local(&temp_file, &car_file, multicodec::Codec::Sha2_256, true).unwrap();
+            pack_files(&temp_file, &car_file, multicodec::Codec::Sha2_256, true).unwrap();
         assert_eq!(test_cid, reference);
     }
 
     #[test]
-    fn test_dir_small_file() {
+    fn test_pack_files_dir_small_file() {
         let temp_dir = TempDir::new("blockless-car-temp-dir").unwrap();
 
         // create a root dir with a fixed name (temp_dir name has a random suffix)
@@ -616,12 +591,12 @@ mod test {
         };
 
         let test_cid =
-            archive_local(&root_dir, &car_file, multicodec::Codec::Sha2_256, false).unwrap();
+            pack_files(&root_dir, &car_file, multicodec::Codec::Sha2_256, false).unwrap();
         assert_eq!(test_cid, reference);
     }
 
     #[test]
-    fn test_dir_big_file() {
+    fn test_pack_files_dir_big_file() {
         let temp_dir = TempDir::new("blockless-car-temp-dir").unwrap();
 
         // create a root dir with a fixed name (temp_dir name has a random suffix)
@@ -642,12 +617,12 @@ mod test {
         };
 
         let test_cid =
-            archive_local(&root_dir, &car_file, multicodec::Codec::Sha2_256, false).unwrap();
+            pack_files(&root_dir, &car_file, multicodec::Codec::Sha2_256, false).unwrap();
         assert_eq!(test_cid, reference);
     }
 
     #[test]
-    fn dir_tree() {
+    fn test_pack_files_dir_tree() {
         let temp_dir = TempDir::new("blockless-car-temp-dir").unwrap();
 
         // create a root dir with a fixed name (temp_dir name has a random suffix)
@@ -695,7 +670,35 @@ mod test {
         };
 
         let test_cid =
-            archive_local(&root_dir, &car_file, multicodec::Codec::Sha2_256, false).unwrap();
+            pack_files(&root_dir, &car_file, multicodec::Codec::Sha2_256, false).unwrap();
+        assert_eq!(test_cid, reference);
+    }
+
+    #[test]
+    fn test_pack_buffer() {
+        let temp_dir = TempDir::new("blockless-car-temp-dir").unwrap();
+
+        // create a large file
+        let temp_file = temp_dir.path().join("data.bin");
+        write_large_file(&temp_file, 10000000);
+
+        // read file into a buffer which implements std::io::{Read, Seek}
+        let mut reader = Cursor::new(fs::read(&temp_file).unwrap());
+
+        // create a target buffer that implements std::io::{Write, Seek}
+        let mut writer = Cursor::new(vec![]);
+        let size = reader.get_ref().len();
+
+        let test_cid =
+            pack_buffer(&mut reader, &mut writer, size, multicodec::Codec::Sha2_256).unwrap();
+
+        let temp_output_dir = TempDir::new("blockless-car-temp-output-dir").unwrap();
+        let reference = match get_reference_cid(&temp_file, &temp_output_dir, true) {
+            Some(reference) => reference,
+            None => Cid::from_str("bafybeies2czmisuexy2mfx5vizfs34xdtiwsvyqwuy4fdqsfdv2vouo35i")
+                .unwrap(),
+        };
+
         assert_eq!(test_cid, reference);
     }
 }

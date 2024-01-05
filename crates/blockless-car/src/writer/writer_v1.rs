@@ -75,27 +75,35 @@ where
         self.inner.rewind()?;
         self.write_head()
     }
-    
+
     fn stream_block<F, R>(
         &mut self,
         mut cid_f: F,
-        stream_len: usize,
+        stream_size: usize,
         r: &mut R,
     ) -> Result<Cid, CarError>
     where
-    R: std::io::Read + std::io::Seek,
-    F: FnMut(WriteStream) -> Option<Result<Cid, CarError>>,
+        R: std::io::Read + std::io::Seek,
+        F: FnMut(WriteStream) -> Option<Result<Cid, CarError>>,
     {
         if !self.is_header_written {
             self.write_head()?;
         }
+        let mut read_size = 0;
+
+        // store start position in stream
+        let start_pos = r.stream_position()?;
+
         // stream r once to get CID
-        let mut buf = [0u8; BUFFER_SIZE];
-        while let Ok(n) = r.read(&mut buf) {
+        let mut buffer = [0u8; BUFFER_SIZE];
+        while let Ok(n) =
+            r.read(&mut buffer[0..std::cmp::min(BUFFER_SIZE, stream_size - read_size)])
+        {
             if n == 0 {
                 break;
             }
-            if let Some(Err(e)) = cid_f(WriteStream::Bytes(&buf[0..n])) {
+            read_size += n;
+            if let Some(Err(e)) = cid_f(WriteStream::Bytes(&buffer[0..n])) {
                 return Err(e);
             }
         }
@@ -110,17 +118,21 @@ where
             let mut cid_buf: Vec<u8> = Vec::new();
             cid.write_bytes(&mut cid_buf)
                 .map_err(|e| CarError::Parsing(e.to_string()))?;
-            let sec_len = stream_len + cid_buf.len();
+            let sec_len = stream_size + cid_buf.len();
             self.inner.write_varint(sec_len)?;
             self.inner.write_all(cid_buf.as_slice())?;
 
             // stream r a second time to write into output stream
-            r.rewind()?;
-            while let Ok(n) = r.read(&mut buf) {
+            let mut read_size = 0;
+            r.seek(std::io::SeekFrom::Start(start_pos))?;
+            while let Ok(n) =
+                r.read(&mut buffer[0..std::cmp::min(BUFFER_SIZE, stream_size - read_size)])
+            {
                 if n == 0 {
                     break;
                 }
-                self.inner.write_all(&buf[0..n])?;
+                read_size += n;
+                self.inner.write_all(&buffer[0..n])?;
             }
             self.hashes_written.push(cid);
         }

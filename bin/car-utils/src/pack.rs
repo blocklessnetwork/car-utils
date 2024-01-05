@@ -1,5 +1,5 @@
 use crate::error::UtilError;
-use blockless_car::utils::archive_local;
+use blockless_car::utils::pack_files;
 use std::path::Path;
 
 #[allow(non_camel_case_types)]
@@ -42,7 +42,7 @@ impl PackCommand {
             HasherCodec::Sha2_256 => multicodec::Codec::Sha2_256,
             HasherCodec::Blake2b_256 => multicodec::Codec::Blake2b_256,
         };
-        archive_local(
+        pack_files(
             self.source.as_ref() as &Path,
             file,
             hasher_codec,

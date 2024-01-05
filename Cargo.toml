@@ -2,3 +2,7 @@
 resolver = "2"
 members = ["bin/car-utils", "crates/blockless-car"]
 default-members = ["bin/car-utils"]
+
+[profile.test]
+# Required for test builds to be fast (https://users.rust-lang.org/t/bufwrite-is-extremely-slow-in-debug-mode/51330/8)
+opt-level = 2

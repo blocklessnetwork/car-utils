@@ -105,17 +105,6 @@ pub struct Link {
     pub tsize: u64,
 }
 
-impl Link {
-    pub fn new(hash: Cid, name: String, tsize: u64) -> Self {
-        Self {
-            hash,
-            name,
-            tsize,
-            file_type: FileType::Raw,
-        }
-    }
-}
-
 impl<'a> From<Data<'a>> for UnixFs {
     fn from(value: Data<'a>) -> Self {
         Self {

@@ -41,7 +41,12 @@ impl Decoder<UnixFs> for Ipld {
                             } else {
                                 0
                             };
-                            unix_fs.add_link(Link::new(cid, name, size));
+                            unix_fs.add_link(Link {
+                                hash: cid,
+                                file_type: FileType::Raw,
+                                name,
+                                tsize: size,
+                            });
                         }
                     });
                 }

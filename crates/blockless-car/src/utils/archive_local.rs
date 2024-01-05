@@ -26,6 +26,7 @@ type WalkPathCache = HashMap<Rc<PathBuf>, UnixFs>;
 type Size = usize;
 
 const MAX_SECTION_SIZE: usize = 262144;
+const MAX_LINK_COUNT: usize = 174;
 
 struct LimitedFile<'a> {
     inner: &'a mut File,
@@ -119,7 +120,7 @@ pub fn archive_local<T>(
     to_carfile: T,
     hasher_codec: multicodec::Codec,
     no_wrap_file: bool,
-) -> Result<(), CarError>
+) -> Result<Cid, CarError>
 where
     T: std::io::Write + std::io::Seek,
 {
@@ -141,11 +142,12 @@ where
             root_cid = hash;
         } else {
             // wrap file into a directory entry
-            let link = Link::new(
+            let link = Link {
                 hash,
-                src_path.file_name().unwrap().to_str().unwrap().to_owned(),
-                size as u64,
-            );
+                file_type: FileType::Directory,
+                name: src_path.file_name().unwrap().to_str().unwrap().to_owned(),
+                tsize: size as u64,
+            };
             let unix_fs = UnixFs {
                 links: vec![link],
                 file_type: FileType::Directory,
@@ -161,7 +163,7 @@ where
         }
     } else {
         //source is a directory, walk the directory tree
-        let (walk_paths, mut path_cache) = walk_path(path)?;
+        let (walk_paths, mut path_cache) = walk_path(&path)?;
         for walk_path in &walk_paths {
             process_path(
                 root_path.as_ref(),
@@ -172,9 +174,34 @@ where
                 hasher_codec,
             )?;
         }
+        // add an additional top node like in go-car
+        let root_node = path_cache.get(&path).unwrap();
+        let tsize: u64 = DagPbCodec
+            .encode(&root_node.encode()?)
+            .map_err(|e| CarError::Parsing(e.to_string()))?
+            .len() as u64
+            + root_node.links.iter().map(|link| link.tsize).sum::<u64>();
+        let unix_fs = UnixFs {
+            links: vec![Link {
+                hash: root_cid,
+                file_type: FileType::Directory,
+                name: path.file_name().unwrap().to_str().unwrap().to_string(),
+                tsize,
+            }],
+            file_type: FileType::Directory,
+            file_size: None,
+            ..Default::default()
+        };
+        let ipld = unix_fs.encode()?;
+        let bs = DagPbCodec
+            .encode(&ipld)
+            .map_err(|e| CarError::Parsing(e.to_string()))?;
+        root_cid = pb_cid(&bs, hasher_codec);
+        writer.write_block(root_cid, bs)?;
     }
     let header = CarHeader::V1(CarHeaderV1::new(vec![root_cid]));
-    writer.rewrite_header(header)
+    writer.rewrite_header(header)?;
+    Ok(root_cid)
 }
 
 fn stream_block<R, W>(
@@ -209,36 +236,82 @@ fn process_file<W: std::io::Write + std::io::Seek>(
             file_size,
         ))
     } else {
-        //split file when file size is bigger than the max section size.
-        let file_secs = (file_size / MAX_SECTION_SIZE) + 1;
-        //split the big file into small file and calc the cids.
+        let mut secs = file_size / MAX_SECTION_SIZE;
+        if file_size % MAX_SECTION_SIZE > 0 {
+            secs += 1;
+        }
         let mut block_sizes = vec![];
-        let links = (0..file_secs)
+        let mut links = (0..secs)
             .map(|i| {
                 let mut limit_file = LimitedFile::new(&mut file, MAX_SECTION_SIZE);
-                let size = if i < file_secs - 1 {
+                let size = if i < secs - 1 {
                     MAX_SECTION_SIZE
                 } else {
                     file_size % MAX_SECTION_SIZE
                 };
                 block_sizes.push(size as u64);
                 let cid = stream_block(writer, size, &mut limit_file, hasher_codec);
-                cid.map(|cid| Link::new(cid, String::new(), size as _))
+                cid.map(|cid| Link {
+                    hash: cid,
+                    file_type: FileType::Raw,
+                    name: String::default(),
+                    tsize: size as u64,
+                })
             })
             .collect::<Result<Vec<Link>, CarError>>()?;
-        let unix_fs_inner = UnixFs {
+        while links.len() > MAX_LINK_COUNT {
+            let mut new_links = vec![];
+            let mut new_block_sizes = vec![];
+            let mut link_count = links.len() / MAX_LINK_COUNT;
+            if links.len() % MAX_LINK_COUNT > 0 {
+                link_count += 1;
+            }
+            for _ in 0..link_count {
+                let len = if links.len() >= MAX_LINK_COUNT {
+                    MAX_LINK_COUNT
+                } else {
+                    links.len()
+                };
+                let links_size = block_sizes.as_slice()[0..len].iter().sum();
+                let unix_fs = UnixFs {
+                    links: links.drain(0..len).collect(),
+                    file_type: FileType::File,
+                    file_size: Some(links_size),
+                    block_sizes: block_sizes.drain(0..len).collect(),
+                    ..Default::default()
+                };
+                let ipld = unix_fs.encode()?;
+                let bs = DagPbCodec
+                    .encode(&ipld)
+                    .map_err(|e| CarError::Parsing(e.to_string()))?;
+                let size = links_size + bs.len() as u64;
+                let cid = pb_cid(&bs, hasher_codec);
+                writer.write_block(cid, bs)?;
+                let new_link = Link {
+                    hash: cid,
+                    file_type: FileType::File,
+                    name: String::default(),
+                    tsize: size,
+                };
+                new_links.push(new_link);
+                new_block_sizes.push(links_size);
+            }
+            links = new_links;
+            block_sizes = new_block_sizes;
+        }
+        let links_size = links.iter().map(|link| link.tsize as usize).sum::<usize>();
+        let unix_fs = UnixFs {
+            file_size: Some(block_sizes.iter().sum()),
             links,
             file_type: FileType::File,
-            file_size: Some(file_size as u64),
             block_sizes,
             ..Default::default()
         };
-        let file_ipld = unix_fs_inner.encode()?;
+        let file_ipld = unix_fs.encode()?;
         let bs = DagPbCodec
             .encode(&file_ipld)
             .map_err(|e| CarError::Parsing(e.to_string()))?;
-        // add size of metadata to tsize https://discuss.ipfs.tech/t/how-to-decipher-root-node-content/11594/2
-        let size = file_size + bs.len();
+        let size = links_size + bs.len();
         let cid = pb_cid(&bs, hasher_codec);
         writer.write_block(cid, bs)?;
         Ok((cid, size))
@@ -270,7 +343,6 @@ fn process_path<W: std::io::Write + std::io::Seek>(
             true => std::cmp::Ordering::Greater,
             false => std::cmp::Ordering::Less,
         });
-
     let fs_ipld: Ipld = unix_fs.encode()?;
     let bs = DagPbCodec
         .encode(&fs_ipld)
@@ -326,27 +398,7 @@ pub fn walk_path(path: impl AsRef<Path>) -> Result<(Vec<WalkPath>, WalkPathCache
     let mut path_cache = HashMap::new();
     let mut walk_paths = Vec::new();
     while let Some(dir_path) = queue.pop_back() {
-        // let file_type = fs::metadata(root_path.as_ref())?.file_type();
         let mut unix_dir = UnixFs::new_directory();
-        // if file_type.is_file() {
-        //     // no_wrap true
-        //     unix_dir.file_type = FileType::File;
-        //     let name = dir_path
-        //         .file_name()
-        //         .unwrap_or_default()
-        //         .to_str()
-        //         .unwrap()
-        //         .to_string();
-        //     let tsize = fs::metadata(root_path.as_ref())?.len();
-        //     unix_dir.add_link(Link {
-        //         name,
-        //         tsize,
-        //         file_type: FileType::File,
-        //         ..Default::default()
-        //     });
-        // } else if file_type.is_dir() {
-        // no_wrap false
-        // unix_dir.file_type = FileType::Directory;
         for entry in fs::read_dir(&*dir_path)? {
             let entry = entry?;
             let file_type = entry.file_type()?;
@@ -358,14 +410,6 @@ pub fn walk_path(path: impl AsRef<Path>) -> Result<(Vec<WalkPath>, WalkPathCache
                     ..Default::default()
                 });
             } else if file_type.is_dir() {
-                // sum up all file sizes in this dir for tsize in pb-dag
-                // let mut dir_size = 0;
-                // for entry in fs::read_dir(entry.path())? {
-                //     let entry = entry?;
-                //     if entry.file_type()?.is_file() {
-                //         dir_size+= entry.metadata()?.len();
-                //     }
-                // }
                 let abs_path = entry.path().absolutize()?.to_path_buf();
                 let rc_abs_path = Rc::new(abs_path);
                 let idx = unix_dir.add_link(Link {
@@ -377,9 +421,6 @@ pub fn walk_path(path: impl AsRef<Path>) -> Result<(Vec<WalkPath>, WalkPathCache
                 walk_paths.push((rc_abs_path.clone(), Some(idx)));
                 queue.push_back(rc_abs_path);
             }
-            // }
-            // } else {
-            //     unreachable!("unsupported filetype!");
         }
         path_cache.insert(dir_path, unix_dir);
     }
@@ -393,43 +434,76 @@ pub fn walk_path(path: impl AsRef<Path>) -> Result<(Vec<WalkPath>, WalkPathCache
 #[cfg(test)]
 mod test {
     use super::*;
-    use hex::ToHex;
-    use std::io::Write;
+    use rand::prelude::*;
+    use rand_chacha::ChaCha8Rng;
+    use std::{
+        cmp,
+        io::{BufWriter, Write},
+        str::FromStr,
+    };
     use tempdir::TempDir;
 
-    #[test]
-    fn test_archive_local_dir_nested() {
-        // SHA2-256 hash of a reference .car file generated with go-car (https://github.com/ipld/go-car)
-        const REFERENCE_HASH: &str =
-            "22dcd3f17a1abd64c785fc796ce6593ce4a501717aa6352f3f3c11973d240f96";
+    fn write_large_file(path: &PathBuf, size: usize) {
+        let file = File::create(path).unwrap();
+        let mut writer = BufWriter::new(file);
+        let mut buffer: [u8; 1000] = [0; 1000];
+        let mut remaining_size = size;
+        // use seeded random data to fill
+        let mut rng = ChaCha8Rng::seed_from_u64(1);
+        while remaining_size > 0 {
+            let to_write = cmp::min(remaining_size, buffer.len());
+            let buffer = &mut buffer[..to_write];
+            rng.fill(buffer);
+            let amount = writer.write(buffer).unwrap();
+            remaining_size -= amount;
+        }
+        writer.flush().unwrap();
+    }
 
-        let temp_dir = TempDir::new("blockless-car-temp-dir-1").unwrap();
-        let temp_dir_nested = temp_dir.path().join("nested");
-        std::fs::create_dir_all(temp_dir_nested.as_ref() as &Path).unwrap();
-
-        let temp_file = temp_dir_nested.join("test.txt");
-        let mut file = File::create(temp_file).unwrap();
-        file.write_all(b"hello world").unwrap();
-
-        let temp_output_dir = TempDir::new("blockless-car-temp-output-dir").unwrap();
-        let temp_output_file = temp_output_dir.path().join("test.car");
-        let car_file = std::fs::File::create(temp_output_file.as_ref() as &Path).unwrap();
-
-        archive_local(&temp_dir, &car_file, multicodec::Codec::Sha2_256, false).unwrap();
-
-        // compare hash of CAR file to precomputed hash
-        let bytes = std::fs::read(temp_output_file).unwrap(); // Vec<u8>
-        let hash = Code::Sha2_256.digest(&bytes);
-        assert_eq!(hash.digest().encode_hex::<String>(), REFERENCE_HASH);
+    fn get_reference_cid(
+        source_path: &impl AsRef<Path>,
+        output_dir: &impl AsRef<Path>,
+        no_wrap: bool,
+    ) -> Option<Cid> {
+        if !home::home_dir().unwrap().join("go/bin/car").exists() {
+            return None;
+        }
+        let temp_reference_file = output_dir.as_ref().join("test-reference.car");
+        std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!(
+                "$HOME/go/bin/car create --version 1 {} --file {} {}",
+                if no_wrap { "--no-wrap" } else { "" },
+                temp_reference_file.to_str().unwrap(),
+                source_path.as_ref().to_str().unwrap()
+            ))
+            .output()
+            .expect("failed to execute process");
+        let result = String::from_utf8(
+            std::process::Command::new("sh")
+                .arg("-c")
+                .arg(format!(
+                    "$HOME/go/bin/car root {}",
+                    temp_reference_file.to_str().unwrap(),
+                ))
+                .output()
+                .expect("failed to execute process")
+                .stdout,
+        )
+        .unwrap();
+        let reference = Cid::from_str(result.trim()).unwrap();
+        println!("Reference CID: {}", reference);
+        Some(reference)
     }
 
     #[test]
-    fn test_archive_local_small_file_no_wrap_false() {
-        // SHA2-256 hash of a reference .car file generated with go-car (https://github.com/ipld/go-car)
-        const REFERENCE_HASH: &str =
-            "81a61aa2d2c34f128720b8639e39503b30ffe7facbba5454de125649c41887b8";
+    fn test_small_file_no_wrap_false() {
+        let temp_dir = TempDir::new("blockless-car-temp-dir").unwrap();
 
-        let temp_dir = TempDir::new("blockless-car-temp-dir-2").unwrap();
+        // create a root dir with a fixed name (temp_dir name has a random suffix)
+        let root_dir = temp_dir.path().join("root");
+        std::fs::create_dir_all(root_dir).unwrap();
+
         let temp_file = temp_dir.path().join("test.txt");
 
         let mut file = File::create(&temp_file).unwrap();
@@ -439,22 +513,20 @@ mod test {
         let temp_output_file = temp_output_dir.path().join("test.car");
         let car_file = std::fs::File::create(temp_output_file.as_ref() as &Path).unwrap();
 
-        // archive the file
-        archive_local(&temp_file, &car_file, multicodec::Codec::Sha2_256, false).unwrap();
+        let reference = match get_reference_cid(&temp_file, &temp_output_dir, false) {
+            Some(reference) => reference,
+            None => Cid::from_str("bafybeifotw2dmp73obnbhg6uffdrjshvone2jkkp3rlw3fot2vne5zvymu")
+                .unwrap(),
+        };
 
-        // compare hash of CAR file to precomputed hash
-        let bytes = std::fs::read(&temp_output_file).unwrap(); // Vec<u8>
-        let hash = Code::Sha2_256.digest(&bytes);
-        assert_eq!(hash.digest().encode_hex::<String>(), REFERENCE_HASH);
+        let test_cid =
+            archive_local(&temp_file, &car_file, multicodec::Codec::Sha2_256, false).unwrap();
+        assert_eq!(test_cid, reference);
     }
 
     #[test]
-    fn test_archive_local_small_file_no_wrap_true() {
-        // SHA2-256 hash of a reference .car file generated with go-car (https://github.com/ipld/go-car)
-        const REFERENCE_HASH: &str =
-            "7749e28c4fe3f68c00ac08af41c1c4f6e0275c86bd9e8ae7b9446da7d1663710";
-
-        let temp_dir = TempDir::new("blockless-car-temp-dir-3").unwrap();
+    fn test_small_file_no_wrap_true() {
+        let temp_dir = TempDir::new("blockless-car-temp-dir").unwrap();
         let temp_file = temp_dir.path().join("test.txt");
         let mut file = File::create(&temp_file).unwrap();
         file.write_all(b"hello world").unwrap();
@@ -463,76 +535,72 @@ mod test {
         let temp_output_file = temp_output_dir.path().join("test.car");
         let car_file = std::fs::File::create(temp_output_file.as_ref() as &Path).unwrap();
 
-        // archive the directory with no-wrap
-        assert!(archive_local(&temp_file, &car_file, multicodec::Codec::Sha2_256, true).is_ok());
+        let reference = match get_reference_cid(&temp_file, &temp_output_dir, true) {
+            Some(reference) => reference,
+            None => Cid::from_str("bafkreifzjut3te2nhyekklss27nh3k72ysco7y32koao5eei66wof36n5e")
+                .unwrap(),
+        };
 
-        // compare hash of CAR file to precomputed hash
-        let bytes = std::fs::read(&temp_output_file).unwrap(); // Vec<u8>
-        let hash = Code::Sha2_256.digest(&bytes);
-        assert_eq!(hash.digest().encode_hex::<String>(), REFERENCE_HASH);
+        let test_cid =
+            archive_local(&temp_file, &car_file, multicodec::Codec::Sha2_256, true).unwrap();
+        assert_eq!(test_cid, reference);
     }
 
     #[test]
-    fn test_archive_local_large_file_no_wrap_false() {
-        // SHA2-256 hash of a reference .car file generated with go-car (https://github.com/ipld/go-car)
-        const REFERENCE_HASH: &str =
-            "561d2686a9d062095cc6be8e997b554b244fac4380daa254444fc5b7195dfb37";
+    fn test_large_file_no_wrap_false() {
+        let temp_dir = TempDir::new("blockless-car-temp-dir").unwrap();
 
-        let temp_dir = TempDir::new("blockless-car-temp-dir-2").unwrap();
+        // create a root dir with a fixed name (temp_dir name has a random suffix)
+        let root_dir = temp_dir.path().join("root");
+        std::fs::create_dir_all(root_dir).unwrap();
+
         let temp_file = temp_dir.path().join("data.bin");
-        std::process::Command::new("sh")
-            .arg("-c")
-            .arg("dd if=/dev/zero bs=1000000 count=1 > ".to_string() + temp_file.to_str().unwrap())
-            .output()
-            .expect("failed to execute process");
+        write_large_file(&temp_file, 1000000);
 
         let temp_output_dir = TempDir::new("blockless-car-temp-output-dir").unwrap();
         let temp_output_file = temp_output_dir.path().join("test.car");
         let car_file = std::fs::File::create(temp_output_file.as_ref() as &Path).unwrap();
 
-        // archive the file
-        archive_local(&temp_file, &car_file, multicodec::Codec::Sha2_256, false).unwrap();
+        let reference = match get_reference_cid(&temp_file, &temp_output_dir, false) {
+            Some(reference) => reference,
+            None => Cid::from_str("bafybeibdndwligqskbbklvjhq32fuugwfuzt3i242u2yd2ih6hddgmilkm")
+                .unwrap(),
+        };
 
-        // compare hash of CAR file to precomputed hash
-        let bytes = std::fs::read(&temp_output_file).unwrap(); // Vec<u8>
-        let hash = Code::Sha2_256.digest(&bytes);
-        assert_eq!(hash.digest().encode_hex::<String>(), REFERENCE_HASH);
+        let test_cid =
+            archive_local(&temp_file, &car_file, multicodec::Codec::Sha2_256, false).unwrap();
+        assert_eq!(test_cid, reference);
     }
 
     #[test]
-    fn test_archive_local_large_file_no_wrap_true() {
-        // SHA2-256 hash of a reference .car file generated with go-car (https://github.com/ipld/go-car)
-        const REFERENCE_HASH: &str =
-            "aa0ff19fc2c63eb6ec5a53eebc471b06187a48ba0e19f2e494671171c5eb6279";
-
-        let temp_dir = TempDir::new("blockless-car-temp-dir-3").unwrap();
-        let temp_file = temp_dir.path().join("test.txt");
-        std::process::Command::new("sh")
-            .arg("-c")
-            .arg("dd if=/dev/zero bs=1000000 count=1 > ".to_string() + temp_file.to_str().unwrap())
-            .output()
-            .expect("failed to execute process");
+    fn test_large_file_no_wrap_true() {
+        let temp_dir = TempDir::new("blockless-car-temp-dir").unwrap();
+        let temp_file = temp_dir.path().join("data.bin");
+        write_large_file(&temp_file, 1000000);
 
         let temp_output_dir = TempDir::new("blockless-car-temp-output-dir").unwrap();
         let temp_output_file = temp_output_dir.path().join("test.car");
         let car_file = std::fs::File::create(temp_output_file.as_ref() as &Path).unwrap();
 
-        // archive the directory with no-wrap
-        assert!(archive_local(&temp_file, &car_file, multicodec::Codec::Sha2_256, true).is_ok());
+        let reference = match get_reference_cid(&temp_file, &temp_output_dir, true) {
+            Some(reference) => reference,
+            None => Cid::from_str("bafybeigr5o3jbe2biam6pskvjhbaczjfdlmnjwlzovpgbzctiwqtpkvhee")
+                .unwrap(),
+        };
 
-        // compare hash of CAR file to precomputed hash
-        let bytes = std::fs::read(&temp_output_file).unwrap(); // Vec<u8>
-        let hash = Code::Sha2_256.digest(&bytes);
-        assert_eq!(hash.digest().encode_hex::<String>(), REFERENCE_HASH);
+        let test_cid =
+            archive_local(&temp_file, &car_file, multicodec::Codec::Sha2_256, true).unwrap();
+        assert_eq!(test_cid, reference);
     }
 
     #[test]
-    fn test_archive_local_dir_small_file() {
-        // SHA2-256 hash of a reference .car file generated with go-car (https://github.com/ipld/go-car)
-        const REFERENCE_HASH: &str =
-            "81a61aa2d2c34f128720b8639e39503b30ffe7facbba5454de125649c41887b8";
+    fn test_dir_small_file() {
+        let temp_dir = TempDir::new("blockless-car-temp-dir").unwrap();
 
-        let temp_dir = TempDir::new("blockless-car-temp-dir-3").unwrap();
+        // create a root dir with a fixed name (temp_dir name has a random suffix)
+        let root_dir = temp_dir.path().join("root");
+        std::fs::create_dir_all(&root_dir).unwrap();
+
         let temp_file = temp_dir.path().join("test.txt");
         let mut file = File::create(temp_file).unwrap();
         file.write_all(b"hello world").unwrap();
@@ -541,39 +609,93 @@ mod test {
         let temp_output_file = temp_output_dir.path().join("test.car");
         let car_file = std::fs::File::create(temp_output_file.as_ref() as &Path).unwrap();
 
-        // archive the directory with no-wrap
-        assert!(archive_local(&temp_dir, &car_file, multicodec::Codec::Sha2_256, false).is_ok());
+        let reference = match get_reference_cid(&root_dir, &temp_output_dir, false) {
+            Some(reference) => reference,
+            None => Cid::from_str("bafybeifp6fbcoaq3px3ha22ddltu3itl5ek3secgtmbwm4ui7ru74ndwkm")
+                .unwrap(),
+        };
 
-        // compare hash of CAR file to precomputed hash
-        let bytes = std::fs::read(temp_output_file).unwrap(); // Vec<u8>
-        let hash = Code::Sha2_256.digest(&bytes);
-        assert_eq!(hash.digest().encode_hex::<String>(), REFERENCE_HASH);
+        let test_cid =
+            archive_local(&root_dir, &car_file, multicodec::Codec::Sha2_256, false).unwrap();
+        assert_eq!(test_cid, reference);
     }
 
     #[test]
-    fn test_archive_local_dir_big_file() {
-        // SHA2-256 hash of a reference .car file generated with go-car (https://github.com/ipld/go-car)
-        const REFERENCE_HASH: &str =
-            "561d2686a9d062095cc6be8e997b554b244fac4380daa254444fc5b7195dfb37";
+    fn test_dir_big_file() {
+        let temp_dir = TempDir::new("blockless-car-temp-dir").unwrap();
 
-        let temp_dir = TempDir::new("blockless-car-temp-dir-3").unwrap();
-        let temp_file = temp_dir.path().join("data.bin");
-        std::process::Command::new("sh")
-            .arg("-c")
-            .arg("dd if=/dev/zero bs=1000000 count=1 > ".to_string() + temp_file.to_str().unwrap())
-            .output()
-            .expect("failed to execute process");
+        // create a root dir with a fixed name (temp_dir name has a random suffix)
+        let root_dir = temp_dir.path().join("root");
+        std::fs::create_dir_all(&root_dir).unwrap();
+
+        let temp_file = root_dir.join("data.bin");
+        write_large_file(&temp_file, 1000000000);
 
         let temp_output_dir = TempDir::new("blockless-car-temp-output-dir").unwrap();
         let temp_output_file = temp_output_dir.path().join("test.car");
         let car_file = std::fs::File::create(temp_output_file.as_ref() as &Path).unwrap();
 
-        // archive the directory with no-wrap
-        assert!(archive_local(&temp_dir, &car_file, multicodec::Codec::Sha2_256, false).is_ok());
+        let reference = match get_reference_cid(&root_dir, &temp_output_dir, false) {
+            Some(reference) => reference,
+            None => Cid::from_str("bafybeidvyeyyss53sab3i43utmznutnise2h7ptvv3ftccvyfqc6r5sv74")
+                .unwrap(),
+        };
 
-        // compare hash of CAR file to precomputed hash
-        let bytes = std::fs::read(temp_output_file).unwrap(); // Vec<u8>
-        let hash = Code::Sha2_256.digest(&bytes);
-        assert_eq!(hash.digest().encode_hex::<String>(), REFERENCE_HASH);
+        let test_cid =
+            archive_local(&root_dir, &car_file, multicodec::Codec::Sha2_256, false).unwrap();
+        assert_eq!(test_cid, reference);
+    }
+
+    #[test]
+    fn dir_tree() {
+        let temp_dir = TempDir::new("blockless-car-temp-dir").unwrap();
+
+        // create a root dir with a fixed name (temp_dir name has a random suffix)
+        let root_dir = temp_dir.path().join("root");
+
+        std::fs::create_dir_all(root_dir.join("level1A/level2A/level3A")).unwrap();
+        std::fs::create_dir_all(root_dir.join("level1A/level2B/level3A")).unwrap();
+        std::fs::create_dir_all(root_dir.join("level1A/level2C/level3A")).unwrap();
+        std::fs::create_dir_all(root_dir.join("level1B/level2A/level3A")).unwrap();
+
+        let temp_file = temp_dir
+            .path()
+            .join("root/level1A/level2A/level3A/test.txt");
+        let mut file = File::create(temp_file).unwrap();
+        file.write_all(b"hello world").unwrap();
+
+        let temp_file = root_dir.join("level1A/level2A/test.txt");
+        let mut file = File::create(temp_file).unwrap();
+        file.write_all(b"hello world").unwrap();
+
+        let temp_file = temp_dir
+            .path()
+            .join("root/level1A/level2B/level3A/data.bin");
+        write_large_file(&temp_file, 1000000);
+
+        let temp_file = temp_dir
+            .path()
+            .join("root/level1A/level2C/level3A/data.bin");
+        write_large_file(&temp_file, 100000000);
+
+        let temp_file = temp_dir
+            .path()
+            .join("root/level1A/level2C/level3A/test.txt");
+        let mut file = File::create(temp_file).unwrap();
+        file.write_all(b"hello world").unwrap();
+
+        let temp_output_dir = TempDir::new("blockless-car-temp-output-dir").unwrap();
+        let temp_output_file = temp_output_dir.path().join("test.car");
+        let car_file = std::fs::File::create(temp_output_file.as_ref() as &Path).unwrap();
+
+        let reference = match get_reference_cid(&root_dir, &temp_output_dir, false) {
+            Some(reference) => reference,
+            None => Cid::from_str("bafybeicidmis4mrywfe4almb473raq7upvacl2hk6lxqsi2zggvrj7demi")
+                .unwrap(),
+        };
+
+        let test_cid =
+            archive_local(&root_dir, &car_file, multicodec::Codec::Sha2_256, false).unwrap();
+        assert_eq!(test_cid, reference);
     }
 }

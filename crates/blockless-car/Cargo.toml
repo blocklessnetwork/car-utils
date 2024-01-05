@@ -26,4 +26,6 @@ multihash-codetable = "0.1.1"
 
 [dev-dependencies]
 tempdir = "0.3.7"
-hex ="0.4"
+rand = "0.8"
+rand_chacha = "0.3"
+home = "0.5"

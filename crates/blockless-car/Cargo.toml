@@ -22,7 +22,6 @@ quick-protobuf = { default-features = false, features = [
     "std",
 ], version = "0.8" }
 multicodec = "0.1.0"
-multihash-codetable = "0.1.1"
 
 [dev-dependencies]
 tempdir = "0.3.7"

@@ -17,7 +17,6 @@ ipld-cbor = { version = "0.16.0", package = "libipld-cbor" }
 thiserror = "1"
 cid = "0.10"
 integer-encoding = "4.0"
-path-absolutize = "3"
 quick-protobuf = { default-features = false, features = [
     "std",
 ], version = "0.8" }

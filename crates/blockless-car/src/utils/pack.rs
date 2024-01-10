@@ -18,7 +18,6 @@ use cid::{
     Cid,
 };
 use ipld::{pb::DagPbCodec, prelude::Codec, raw::RawCodec};
-use path_absolutize::*;
 
 type WalkPath = (Rc<PathBuf>, Option<usize>);
 type WalkPathCache = HashMap<Rc<PathBuf>, UnixFs>;
@@ -39,12 +38,10 @@ pub fn pack_files<T>(
 where
     T: std::io::Write + std::io::Seek,
 {
-    let src_path = path.as_ref();
+    let src_path = path.as_ref().to_path_buf();
     if !src_path.exists() {
         return Err(CarError::IO(io::ErrorKind::NotFound.into()));
     }
-    let root_path = src_path.absolutize().unwrap();
-    let path = root_path.to_path_buf();
     // ensure sufficient file block size for head, after the root cid generated using the content, fill back the head.
     let mut root_cid = empty_pb_cid(hasher_codec);
     let header = CarHeader::new_v1(vec![root_cid]);
@@ -52,7 +49,7 @@ where
 
     if src_path.is_file() {
         // if the source is a file then do not walk directory tree, process the file directly
-        let mut file = fs::OpenOptions::new().read(true).open(src_path)?;
+        let mut file = fs::OpenOptions::new().read(true).open(&src_path)?;
         let file_size = file.metadata()?.len() as usize;
         let (hash, size) = process_file(&mut file, &mut writer, file_size, hasher_codec)?;
         if no_wrap_file {
@@ -83,7 +80,7 @@ where
         let (walk_paths, mut path_cache) = walk_path(&path)?;
         for walk_path in &walk_paths {
             process_path(
-                root_path.as_ref(),
+                &src_path,
                 &mut root_cid,
                 &mut writer,
                 walk_path,
@@ -92,7 +89,7 @@ where
             )?;
         }
         // add an additional top node like in go-car
-        let root_node = path_cache.get(&path).unwrap();
+        let root_node = path_cache.get(&src_path).unwrap();
         let tsize: u64 = DagPbCodec
             .encode(&root_node.encode()?)
             .map_err(|e| CarError::Parsing(e.to_string()))?
@@ -102,7 +99,7 @@ where
             links: vec![Link {
                 hash: root_cid,
                 file_type: FileType::Directory,
-                name: path.file_name().unwrap().to_str().unwrap().to_string(),
+                name: src_path.file_name().unwrap().to_str().unwrap().to_string(),
                 tsize,
             }],
             file_type: FileType::Directory,
@@ -367,7 +364,7 @@ pub fn raw_cid(data: &[u8], hasher_codec: multicodec::Codec) -> Cid {
 /// walk all directory, and record the directory informations.
 /// `WalkPath` contain the index in children.
 pub fn walk_path(path: impl AsRef<Path>) -> Result<(Vec<WalkPath>, WalkPathCache), CarError> {
-    let root_path: Rc<PathBuf> = Rc::new(path.as_ref().absolutize()?.into());
+    let root_path: Rc<PathBuf> = Rc::new(path.as_ref().into());
     let mut queue = VecDeque::from(vec![root_path.clone()]);
     let mut path_cache = HashMap::new();
     let mut walk_paths = Vec::new();
@@ -384,7 +381,7 @@ pub fn walk_path(path: impl AsRef<Path>) -> Result<(Vec<WalkPath>, WalkPathCache
                     ..Default::default()
                 });
             } else if file_type.is_dir() {
-                let abs_path = entry.path().absolutize()?.to_path_buf();
+                let abs_path = entry.path().to_path_buf();
                 let rc_abs_path = Rc::new(abs_path);
                 let idx = unix_dir.add_link(Link {
                     name,

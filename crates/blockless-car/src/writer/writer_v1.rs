@@ -1,15 +1,16 @@
-#![allow(unused)]
-use std::io::SeekFrom;
-
 use super::{CarWriter, WriteStream};
-use crate::{error::CarError, header::CarHeader, utils::empty_pb_cid};
+use crate::{error::CarError, header::CarHeader};
 use cid::Cid;
 use integer_encoding::VarIntWriter;
+
+// how many bytes to read at once from stream
+const BUFFER_SIZE: usize = 10240;
 
 pub(crate) struct CarWriterV1<W> {
     inner: W,
     header: CarHeader,
     is_header_written: bool,
+    hashes_written: Vec<Cid>,
 }
 
 impl<W> CarWriterV1<W>
@@ -29,6 +30,7 @@ where
             inner,
             header,
             is_header_written: false,
+            hashes_written: vec![],
         }
     }
 }
@@ -37,22 +39,24 @@ impl<W> CarWriter for CarWriterV1<W>
 where
     W: std::io::Write + std::io::Seek,
 {
-    fn write<T>(&mut self, cid_data: cid::Cid, data: T) -> Result<(), CarError>
+    fn write_block<T>(&mut self, cid: cid::Cid, data: T) -> Result<(), CarError>
     where
         T: AsRef<[u8]>,
     {
         if !self.is_header_written {
             self.write_head()?;
         }
-        let mut cid_buff: Vec<u8> = Vec::new();
-        cid_data
-            .write_bytes(&mut cid_buff)
-            .map_err(|e| CarError::Parsing(e.to_string()))?;
-        let data = data.as_ref();
-        let sec_len = data.len() + cid_buff.len();
-        self.inner.write_varint(sec_len)?;
-        self.inner.write_all(&cid_buff[..])?;
-        self.inner.write_all(data)?;
+        if !self.hashes_written.contains(&cid) {
+            let mut cid_buff: Vec<u8> = Vec::new();
+            cid.write_bytes(&mut cid_buff)
+                .map_err(|e| CarError::Parsing(e.to_string()))?;
+            let data = data.as_ref();
+            let sec_len = data.len() + cid_buff.len();
+            self.inner.write_varint(sec_len)?;
+            self.inner.write_all(&cid_buff[..])?;
+            self.inner.write_all(data)?;
+            self.hashes_written.push(cid);
+        }
         Ok(())
     }
 
@@ -68,62 +72,77 @@ where
             ));
         }
         self.header = header;
-        self.inner.rewind();
+        self.inner.rewind()?;
         self.write_head()
     }
 
-    fn write_stream<F, R>(
+    fn stream_block<F, R>(
         &mut self,
         mut cid_f: F,
-        stream_len: usize,
+        stream_size: usize,
         r: &mut R,
     ) -> Result<Cid, CarError>
     where
-        R: std::io::Read,
+        R: std::io::Read + std::io::Seek,
         F: FnMut(WriteStream) -> Option<Result<Cid, CarError>>,
     {
         if !self.is_header_written {
             self.write_head()?;
         }
-        let cid = empty_pb_cid();
-        let mut cid_buff: Vec<u8> = Vec::new();
-        cid.write_bytes(&mut cid_buff)
-            .map_err(|e| CarError::Parsing(e.to_string()))?;
-        let sec_len = stream_len + cid_buff.len();
-        self.inner.write_varint(sec_len)?;
-        let cid_pos = self.inner.stream_position()?;
-        self.inner.write_all(&cid_buff[..])?;
-        let mut buf = vec![0u8; 10240];
-        while let Ok(n) = r.read(&mut buf[0..]) {
+        let mut read_size = 0;
+
+        // store start position in stream
+        let start_pos = r.stream_position()?;
+
+        // stream r once to get CID
+        let mut buffer = [0u8; BUFFER_SIZE];
+        while let Ok(n) =
+            r.read(&mut buffer[0..std::cmp::min(BUFFER_SIZE, stream_size - read_size)])
+        {
             if n == 0 {
                 break;
             }
-            let bs = &buf[0..n];
-            self.inner.write_all(bs)?;
-            if let Some(Err(e)) = cid_f(WriteStream::Bytes(bs)) {
+            read_size += n;
+            if let Some(Err(e)) = cid_f(WriteStream::Bytes(&buffer[0..n])) {
                 return Err(e);
             }
         }
-        //write really cid
         let cid = match cid_f(WriteStream::End) {
             Some(Ok(cid)) => cid,
             Some(Err(e)) => return Err(e),
-            None => unimplemented!("should not be reach."),
+            None => unreachable!("cid function cannot return None here"),
         };
 
-        self.inner.seek(SeekFrom::Start(cid_pos))?;
-        let mut cid_buff: Vec<u8> = Vec::new();
-        cid.write_bytes(&mut cid_buff)
-            .map_err(|e| CarError::Parsing(e.to_string()))?;
-        self.inner.write_all(&cid_buff[..])?;
-        self.inner.seek(SeekFrom::Current(stream_len as _))?;
+        if !self.hashes_written.contains(&cid) {
+            // write length and CID to stream
+            let mut cid_buf: Vec<u8> = Vec::new();
+            cid.write_bytes(&mut cid_buf)
+                .map_err(|e| CarError::Parsing(e.to_string()))?;
+            let sec_len = stream_size + cid_buf.len();
+            self.inner.write_varint(sec_len)?;
+            self.inner.write_all(cid_buf.as_slice())?;
+
+            // stream r a second time to write into output stream
+            let mut read_size = 0;
+            r.seek(std::io::SeekFrom::Start(start_pos))?;
+            while let Ok(n) =
+                r.read(&mut buffer[0..std::cmp::min(BUFFER_SIZE, stream_size - read_size)])
+            {
+                if n == 0 {
+                    break;
+                }
+                read_size += n;
+                self.inner.write_all(&buffer[0..n])?;
+            }
+            self.hashes_written.push(cid);
+        }
         Ok(cid)
     }
 }
 
 #[cfg(test)]
 mod test {
-    use std::io::{BufWriter, Cursor};
+    use std::io::Cursor;
 
     use ipld_cbor::DagCborCodec;
 
@@ -144,8 +163,8 @@ mod test {
         let mut buffer = Vec::new();
         let mut buf = Cursor::new(&mut buffer);
         let mut writer = CarWriterV1::new(&mut buf, header);
-        writer.write(cid_test1, b"test1").unwrap();
-        writer.write(cid_test2, b"test2").unwrap();
+        writer.write_block(cid_test1, b"test1").unwrap();
+        writer.write_block(cid_test2, b"test2").unwrap();
         writer.flush().unwrap();
         let mut reader = Cursor::new(&buffer);
         let car_reader = CarReaderV1::new(&mut reader).unwrap();

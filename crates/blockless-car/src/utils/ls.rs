@@ -40,8 +40,8 @@ where
                 _ => continue,
             }
             for n in unixfs.links().into_iter() {
-                let cid = n.hash();
-                cache.insert(cid, file_n.clone() + "/" + n.name_ref());
+                let cid = n.hash;
+                cache.insert(cid, file_n.clone() + "/" + &n.name);
                 vecq.push_back(cid);
             }
         }

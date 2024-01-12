@@ -46,7 +46,7 @@ impl IndexRelation {
         let filename = rel.and_then(|r| {
             cache
                 .get(&r.parent_cid)
-                .map(|f| f.inner.links[r.index].name_ref())
+                .map(|f| &f.inner.links[r.index].name)
         });
         let parent_path = rel.and_then(|r| cache.get(&r.parent_cid).map(|p| &p.path));
         parent_path.zip(filename).map(|(p, n)| {

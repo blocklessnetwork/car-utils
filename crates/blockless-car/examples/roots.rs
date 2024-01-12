@@ -25,7 +25,7 @@ fn main() {
         let count = root_dir
             .links()
             .iter()
-            .filter(|u| u.hash() == file_cid)
+            .filter(|u| u.hash == file_cid)
             .count();
         if count > 0 {
             cat_ipld(&mut reader, file_cid).unwrap();

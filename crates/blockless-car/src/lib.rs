@@ -13,3 +13,6 @@ pub use codec::Decoder;
 pub use header::CarHeader;
 
 pub type Ipld = ipld::Ipld;
+
+// re-export hasher codec types
+pub use multicodec::Codec;

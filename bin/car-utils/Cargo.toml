@@ -10,3 +10,4 @@ publish = false
 [dependencies]
 clap = { version = "4.3.19", features = ["derive"] }
 blockless-car = { path = "../../crates/blockless-car", default-features = false }
+multicodec = "0.1.0"

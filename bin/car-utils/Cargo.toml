@@ -10,5 +10,5 @@ homepage = "https://github.com/blocklessnetwork"
 
 [dependencies]
 clap = { version = "4.3.19", features = ["derive"] }
-blockless-car = { path = "../../crates/blockless-car", default-features = false }
+blockless-car = { path = "../../crates/blockless-car", default-features = false , version = "0.3.0"}
 multicodec = "0.1.0"

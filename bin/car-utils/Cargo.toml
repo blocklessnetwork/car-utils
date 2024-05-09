@@ -1,6 +1,6 @@
 [package]
 name = "car-utils"
-version = "0.3.0"
+version.workspace = true
 edition = "2021"
 authors = ["Join.Gong<joinhack@gmail.com>", "Derek Anderson<derek@txlabs.org>", "Zeeshan.Sarwar<zeeshan@txlabs.org>"]
 description = "This crate is the ipfs car file reader writer and utils CLI."
@@ -11,5 +11,5 @@ repository = "https://github.com/blocklessnetwork/car-utils"
 
 [dependencies]
 clap = { version = "4.3.19", features = ["derive"] }
-blockless-car = { path = "../../crates/blockless-car", default-features = false , version = "0.3.0"}
+blockless-car.workspace = true
 multicodec = "0.1.0"

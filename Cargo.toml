@@ -2,11 +2,11 @@
 resolver = "2"
 members = ["bin/car-utils", "crates/blockless-car"]
 default-members = ["bin/car-utils"]
-package.version = "0.3.1"
+package.version = "0.3.2"
 
 [profile.test]
 # Required for test builds to be fast (https://users.rust-lang.org/t/bufwrite-is-extremely-slow-in-debug-mode/51330/8)
 opt-level = 2
 
 [workspace.dependencies]
-blockless-car = {default-features = false , version = "0.3.1"}
+blockless-car = {default-features = false , version = "0.3.2"}

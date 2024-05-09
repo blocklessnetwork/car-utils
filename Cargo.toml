@@ -9,4 +9,4 @@ package.version = "0.3.1"
 opt-level = 2
 
 [workspace.dependencies]
-blockless-car = {default-features = false , workspace = true}
+blockless-car = {default-features = false , version = "0.3.1"}
